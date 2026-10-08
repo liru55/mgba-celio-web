@@ -147,7 +147,7 @@ void GBAUnloadROM(struct GBA* gba) {
 			gba->yankedRomSize = 0;
 		}
 #ifndef FIXED_ROM_BUFFER
-		mappedMemoryFree(gba->memory.rom, GBA_SIZE_ROM0);
+		mappedMemoryFree(gba->memory.rom, gba->memory.romSize > GBA_SIZE_ROM0 ? GBA_SIZE_ROM0 * 2 : GBA_SIZE_ROM0);
 #endif
 	}
 
@@ -446,11 +446,17 @@ bool GBALoadROM(struct GBA* gba, struct VFile* vf) {
 #else
 			gba->memory.rom = anonymousMemoryMap(GBA_SIZE_ROM0);
 #endif
+		} else if (gba->pristineRomSize == GBA_SIZE_ROM0 * 2) {
+			// 64MiB ROM: second half is mapped at 0x0A000000-0x0BFFFFFF
+			gba->memory.rom = vf->map(vf, gba->pristineRomSize, MAP_READ);
+			gba->memory.romSize = gba->pristineRomSize;
 		} else {
 			gba->memory.rom = vf->map(vf, GBA_SIZE_ROM0, MAP_READ);
 			gba->memory.romSize = GBA_SIZE_ROM0;
 		}
-		gba->pristineRomSize = GBA_SIZE_ROM0;
+		if (gba->memory.romSize <= GBA_SIZE_ROM0) {
+			gba->pristineRomSize = GBA_SIZE_ROM0;
+		}
 	} else if (gba->pristineRomSize == 0x00100000) {
 		// 1 MiB ROMs (e.g. Classic NES) all appear as 4x mirrored, but not more
 		gba->isPristine = false;

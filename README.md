@@ -1,3 +1,23 @@
+# mGBA celio Web
+
+iPhone / iPad向けのWebAssembly版です。64MBのPokemonStart ROMとスマホ用タッチ操作に対応しています。
+
+**起動:** https://liru55.github.io/mgba-celio-web/
+
+- `main`: 元のmGBAソース・履歴とWeb版の変更
+- `upstream-source`: 変更前の元ソース（7c1fde50a）
+- `gh-pages`: ビルド済みWeb配信ファイル
+
+Safariで開き「ROMを開く」から端末のファイルを選んでください。共有メニューの「ホーム画面に追加」で起動アイコンを作れます。ゲームROM・個人のセーブは同梱していません。終了前にセーブを書き出してください。
+
+ビルド・操作・検証については [日本語ガイド](web/README_JP.md) を参照してください。
+
+元ソース: https://github.com/onikoro334274-cell/mGBA_celio_edition
+64MB対応の元実装: rom64ブランチ、770ab0bb8a19fdd11303ea4c42be0f9b81fb6959
+ライセンス: Mozilla Public License 2.0。元の著作権表示・第三者ライセンスを保持しています。
+
+---
+
 mGBA
 ====
 

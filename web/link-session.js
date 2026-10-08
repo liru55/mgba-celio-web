@@ -43,7 +43,9 @@ window.createLinkSession=function(api){
       if(keep&&!online&&savedSecondary)await store.write('link2:'+game.key,{bytes:savedSecondary.buffer,updated:Date.now(),filename:game.name});
       if(data)await store.write(game.key,{bytes:data.buffer,updated:Date.now(),filename:game.name});
     }catch(_){message+='。保存に失敗しました。セーブをファイルに書き出してください';}
-    blockSave=!keep;ending=false;api.release();api.mode(false,false);api.refresh();say(message);buttons();
+    room='';joined=false;sequence=expected=0;seen.clear();pending.clear();$('link-room').value='';
+    blockSave=!keep;ending=false;api.release();if(keep)api.close();
+    api.mode(false,keep&&!document.hidden);api.refresh();say(message);buttons();
   }
   const fail=e=>finish(false,(e.message||String(e))+'。通信前の状態に戻しました',false);
   function command(slot,value){if(!m._web_celio_command(slot,value))throw new Error('通信コマンドを処理できませんでした');}

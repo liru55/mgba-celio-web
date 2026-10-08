@@ -476,8 +476,8 @@
         for(const [id,value] of disabledBeforeLink) $(id).disabled=value;
         disabledBeforeLink.clear();
       }
-      paused=true; clock=0; nextAudio=0;
-      $('pause').textContent='再開';
+      paused=busy||!running; clock=0; nextAudio=0;
+      $('pause').textContent=paused?'再開':'一時停止';
       document.body.classList.toggle('link-mode',busy);
       applyLayout(); updatePauseBanner();
       if (running) enableAudio().catch(()=>{});

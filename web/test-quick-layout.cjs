@@ -21,7 +21,7 @@ if(!process.env.CELIO_ONLINE){
  await p.setViewportSize({width:844,height:390});await p.locator('#fullscreen-layout').click();await p.locator('#pad-edit').click();const b=await p.locator('#quick-action-load').boundingBox();await p.mouse.move(b.x+b.width/2,b.y+b.height/2);await p.mouse.down();await p.mouse.move(650,250,{steps:6});await p.mouse.up();
  const saved=await p.evaluate(()=>JSON.parse(localStorage.getItem('mgba-touch-layout')));for(const id of Object.keys(positions))assert.deepEqual(saved.positions[id],positions[id]);assert.ok(saved.landscapePositions['quick-action-load']);
  await p.locator('#edit-done').click();await p.locator('#settings-close').click();await p.locator('#fullscreen-exit').click();
- await p.locator('#link-open').click();await p.locator('#link-blank2').check();await p.locator('#link-local-start').click();await p.waitForFunction(()=>document.body.classList.contains('link-mode'));assert.equal(await p.locator('#link-view1').isVisible(),true);await p.locator('#link-view1').click();assert.equal(await p.evaluate(()=>window.__m._web_selected()),1);await p.locator('#link-hud-settings').click();await p.locator('#link-end').click();await p.waitForFunction(()=>!document.body.classList.contains('link-mode'));assert.match(await p.locator('#link-status').textContent(),/保存しました/);
+ await p.locator('#link-open').click();await p.locator('#link-room').fill('1234');await p.locator('#link-blank2').check();await p.locator('#link-local-start').click();await p.waitForFunction(()=>document.body.classList.contains('link-mode'));assert.equal(await p.locator('#link-view1').isVisible(),true);await p.locator('#link-view1').click();assert.equal(await p.evaluate(()=>window.__m._web_selected()),1);await p.locator('#link-hud-settings').click();await p.locator('#link-end').click();await p.waitForFunction(()=>!document.body.classList.contains('link-mode'));assert.match(await p.locator('#link-status').textContent(),/保存しました/);assert.equal(await p.locator('#link-room').inputValue(),'');assert.equal(await p.locator('#settings').evaluate(el=>el.open),false);assert.equal(await p.locator('#pause').textContent(),'一時停止');assert.equal(await p.locator('#pause-banner').isVisible(),false);
  console.log('Independent quick action placement, orientation persistence, fullscreen unified editor, actual quick save/load, local Celio UI PASS');
 }else{
  const [host,guest]=pages;await host.locator('#link-open').click();await host.locator('#link-host').click();await host.waitForFunction(()=>/^\d{4}$/.test(document.getElementById('link-room').value),{},{timeout:30000});const room=await host.locator('#link-room').inputValue();
@@ -38,3 +38,5 @@ if(!process.env.CELIO_ONLINE){
 }
 assert.deepEqual(errors,[]);await Promise.all(contexts.map(c=>c.close()));
 }finally{await browser.close();server.close();}})().catch(e=>{console.error(e);server.close();process.exitCode=1});
+
+

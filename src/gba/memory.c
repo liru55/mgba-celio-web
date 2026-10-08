@@ -401,7 +401,9 @@ static void GBASetActiveRegion(struct ARMCore* cpu, uint32_t address) {
 	wait += waitstatesRegion[GBA_REGION_EWRAM];
 
 #define LOAD_IWRAM LOAD_32(value, address & (GBA_SIZE_IWRAM - 4), memory->iwram);
-#define LOAD_IO value = GBAIORead(gba, address & OFFSET_MASK & ~3) | (GBAIORead(gba, (address & OFFSET_MASK & ~1) | 2) << 16);
+#define LOAD_IO \
+	if (gba->sioReadHook && ((address & OFFSET_MASK & ~3) == GBA_REG_SIOMULTI0)) gba->sioReadHook(gba->sioReadHookContext); \
+	value = GBAIORead(gba, address & OFFSET_MASK & ~3) | (GBAIORead(gba, (address & OFFSET_MASK & ~1) | 2) << 16);
 
 #define LOAD_PALETTE_RAM \
 	LOAD_32(value, address & (GBA_SIZE_PALETTE_RAM - 4), gba->video.palette); \
@@ -563,6 +565,9 @@ uint32_t GBALoad16(struct ARMCore* cpu, uint32_t address, int* cycleCounter) {
 		LOAD_16(value, address & (GBA_SIZE_IWRAM - 2), memory->iwram);
 		break;
 	case GBA_REGION_IO:
+		if (gba->sioReadHook && (address & (OFFSET_MASK - 1)) == GBA_REG_SIOMULTI1) {
+			gba->sioReadHook(gba->sioReadHookContext);
+		}
 		value = GBAIORead(gba, address & (OFFSET_MASK - 1));
 		break;
 	case GBA_REGION_PALETTE_RAM:
@@ -678,6 +683,9 @@ uint32_t GBALoad8(struct ARMCore* cpu, uint32_t address, int* cycleCounter) {
 		value = ((uint8_t*) memory->iwram)[address & (GBA_SIZE_IWRAM - 1)];
 		break;
 	case GBA_REGION_IO:
+		if (gba->sioReadHook && (address & 0xFFFE) == GBA_REG_SIOMULTI1) {
+			gba->sioReadHook(gba->sioReadHookContext);
+		}
 		value = (GBAIORead(gba, address & 0xFFFE) >> ((address & 0x0001) << 3)) & 0xFF;
 		break;
 	case GBA_REGION_PALETTE_RAM:

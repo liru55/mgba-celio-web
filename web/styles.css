@@ -1269,3 +1269,17 @@ body.link-mode #quick-actions,body.link-mode #pause-banner {
 
 .memory-panel { margin-top:12px; }
 body:not(.ui-loaded) .memory-panel,.clean-view .memory-panel { display:none; }
+
+/* Portrait phones: use the available width and remove the tall empty screen well. */
+@media (orientation:portrait) and (max-width:900px) {
+  body { padding-left:max(6px,env(safe-area-inset-left)); padding-right:max(6px,env(safe-area-inset-right)); }
+  .screen-viewport { padding:4px; }
+  .play.has-rom:not(.immersive):not(.overlay):not(.editing) {
+    height:auto; min-height:0; max-height:none; grid-template-rows:auto 214px auto;
+  }
+  .play.has-rom:not(.immersive):not(.overlay):not(.editing) .screen-viewport {
+    aspect-ratio:var(--game-aspect,1.5); width:100%; box-sizing:border-box;
+  }
+  .play.has-rom.no-touch:not(.immersive):not(.overlay):not(.editing),
+  .play.has-rom.touch-hidden:not(.immersive):not(.overlay):not(.editing) { grid-template-rows:auto auto; }
+}

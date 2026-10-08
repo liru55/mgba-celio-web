@@ -82,6 +82,7 @@
       document.querySelector('.play').classList.add('has-rom');
       name = file.name; canvas.width = m._web_width(); canvas.height = m._web_height();
       canvas.style.aspectRatio = `${canvas.width}/${canvas.height}`;
+      document.querySelector('.play').style.setProperty('--game-aspect',canvas.width/canvas.height);
       image = ctx.createImageData(canvas.width, canvas.height); pixelHeap = null;
       cheats = []; renderCheats(); configureCheatFormats();
             {

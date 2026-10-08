@@ -1,6 +1,7 @@
 /* Mozilla Public License 2.0; see ../LICENSE. */
 #include <emscripten/emscripten.h>
 #include <mgba/core/core.h>
+#include <mgba/core/cheats.h>
 #include <mgba-util/audio-buffer.h>
 #include <mgba-util/image.h>
 #include <mgba-util/vfs.h>
@@ -64,3 +65,54 @@ EMSCRIPTEN_KEEPALIVE size_t web_save_export(void) {
 }
 EMSCRIPTEN_KEEPALIVE void* web_save_data(void) { return save; }
 EMSCRIPTEN_KEEPALIVE int web_save_import(const void* data, size_t size) { return core && core->savedataRestore(core, data, size, false); }
+
+/* Sets belong to the core and are discarded when another ROM is loaded. */
+EMSCRIPTEN_KEEPALIVE int web_platform(void) { return core ? core->platform(core) : -1; }
+EMSCRIPTEN_KEEPALIVE int web_cheat_add(const char* name, const char* codes, int type) {
+  if (!core || !codes || !*codes || strlen(codes) > 16384) return -1000;
+  struct mCheatDevice* device = core->cheatDevice(core);
+  if (!device || mCheatSetsSize(&device->cheats) >= 100) return -1000;
+  struct mCheatSet* set = device->createSet(device, name);
+  char* text = strdup(codes);
+  if (!set || !text) { if (set) mCheatSetDeinit(set); free(text); return -1000; }
+  char* line = text;
+  int number = 0, count = 0;
+  while (line) {
+    ++number;
+    char* next = strchr(line, '\n');
+    if (next) *next++ = 0;
+    while (*line && isspace((unsigned char)*line)) ++line;
+    size_t length = strlen(line);
+    while (length && isspace((unsigned char)line[length - 1])) line[--length] = 0;
+    if (length) {
+      if (!mCheatAddLine(set, line, type)) { free(text); mCheatSetDeinit(set); return -number; }
+      ++count;
+    }
+    line = next;
+  }
+  free(text);
+  if (!count) { mCheatSetDeinit(set); return -1000; }
+  mCheatAddSet(device, set);
+  mCheatRefresh(device, set);
+  return (int)mCheatSetsSize(&device->cheats) - 1;
+}
+EMSCRIPTEN_KEEPALIVE int web_cheat_enable(unsigned index, int enabled) {
+  if (!core) return 0;
+  struct mCheatDevice* device = core->cheatDevice(core);
+  if (!device || index >= mCheatSetsSize(&device->cheats)) return 0;
+  struct mCheatSet* set = *mCheatSetsGetPointer(&device->cheats, index);
+  set->enabled = !!enabled;
+  mCheatRefresh(device, set);
+  return 1;
+}
+EMSCRIPTEN_KEEPALIVE int web_cheat_remove(unsigned index) {
+  if (!core) return 0;
+  struct mCheatDevice* device = core->cheatDevice(core);
+  if (!device || index >= mCheatSetsSize(&device->cheats)) return 0;
+  struct mCheatSet* set = *mCheatSetsGetPointer(&device->cheats, index);
+  set->enabled = false;
+  mCheatRefresh(device, set);
+  mCheatRemoveSet(device, set);
+  mCheatSetDeinit(set);
+  return 1;
+}

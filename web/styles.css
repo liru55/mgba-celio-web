@@ -739,3 +739,6 @@ textarea{
 .help-link { display:block; padding:14px; margin:4px 0 12px; text-align:center; color:#ddd0ff; background:#252f45; border:1px solid #596b98; border-radius:12px; text-decoration:none; font-size:14px; }
 .help-link:focus-visible { outline:2px solid #c6abff; }
 .clean-view .help-link,.expanded .help-link { visibility:hidden; }
+
+.play { overflow: hidden; }
+#screen { transform: scale(var(--screen-scale, 1)); transform-origin: center; }

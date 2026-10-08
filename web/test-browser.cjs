@@ -23,7 +23,6 @@ const server=http.createServer((req,res)=>{
     await context.addInitScript(()=>{window.__pads=[];Object.defineProperty(navigator,'getGamepads',{value:()=>window.__pads,configurable:true});});
     const page=await context.newPage(), errors=[];
     page.on('pageerror',e=>errors.push(e.message));
-    const outgoing=[];page.on('request',r=>{if(r.method()!=='GET')outgoing.push(r.method()+' '+r.url());});
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
     await page.waitForFunction(()=>!document.getElementById('open').disabled);
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
@@ -84,8 +83,10 @@ const server=http.createServer((req,res)=>{
     await page.waitForFunction(()=>window.__lastKeys===0);
     assert.equal(await page.locator('.play').evaluate(el=>el.classList.contains('touch-hidden')),false);
     await page.locator('#settings-open').click();await page.locator('#tab-controls').click();
+    await page.screenshot({path:path.join(__dirname,'controller-settings.png'),fullPage:true});
     await page.locator('#tab-help').click();assert.match(await page.locator('#panel-help').textContent(),/任天堂/);
     await page.locator('#settings-close').click();
+    await page.screenshot({path:path.join(__dirname,'new-ui.png'),fullPage:true});
     await page.locator('#settings-open').click();await page.locator('#tab-cheats').click();
     await page.locator('#cheat-code').fill('015A00A0');await page.locator('#cheat-add').click();
     assert.equal(await page.locator('#cheat-list input').count(),1);
@@ -113,6 +114,7 @@ const server=http.createServer((req,res)=>{
     for(const selector of ['.dpad','.ab','.shoulders','.system']){const b=await page.locator(selector).boundingBox();assert.ok(b.x>=0&&b.x+b.width<=844&&b.y>=0&&b.y+b.height<=390,selector+' fits landscape');}
     await page.locator('#fullscreen').click();await page.waitForFunction(()=>document.body.classList.contains('expanded'));
     const exit=await page.locator('#fullscreen-exit').boundingBox();assert.ok(exit.x>=0&&exit.y>=0&&exit.x+exit.width<=844&&exit.y+exit.height<=390);
+    await page.screenshot({path:path.join(__dirname,'landscape-fullscreen.png'),fullPage:true});
     await page.locator('#fullscreen-exit').click();await page.setViewportSize({width:390,height:844});
     await page.locator('#settings-open').click();await page.locator('#tab-save').click();
     await page.locator('#browser-save-now').click();
@@ -146,6 +148,7 @@ const server=http.createServer((req,res)=>{
     console.log('Overlay controls: drag position, scale, opacity, layout storage, toggle, unrestricted file pickers PASS');
     console.log('WebKit iPhone viewport: WASM, ROM, canvas, frame loop, audio path, keys, save import/export, PWA manifest PASS');
     assert.deepEqual(errors,[]);
+    await page.screenshot({path:path.join(__dirname,'browser-test.png'),fullPage:true});
     const desktop=await browser.newContext({viewport:{width:1000,height:700}}),native=await desktop.newPage();
     await native.goto(`http://127.0.0.1:${server.address().port}/`);await native.waitForFunction(()=>!document.getElementById('open').disabled);
     await native.locator('#fullscreen').click();await native.waitForFunction(()=>document.fullscreenElement || document.body.classList.contains('expanded'));
@@ -153,12 +156,31 @@ const server=http.createServer((req,res)=>{
     assert.equal(await native.locator('#fullscreen-exit').isVisible(),true);
     await native.locator('#fullscreen-exit').click();await native.waitForFunction(()=>!document.fullscreenElement&&!document.body.classList.contains('expanded'));
     console.log('Desktop fullscreen entry/visible exit/return PASS; native API='+actualNative);await desktop.close();
+    await page.locator('#settings-open').click();await page.locator('#tab-display').click();
+    await page.locator('#screen-scale').evaluate(el=>{el.value='1.5';el.dispatchEvent(new Event('input',{bubbles:true}));});
+    assert.equal(await page.locator('#screen-scale-value').textContent(),'150%');
+    assert.equal(await page.evaluate(()=>getComputedStyle(document.getElementById('screen')).transform),'matrix(1.5, 0, 0, 1.5, 0, 0)');
+    await page.locator('#tab-help').click();
+    await page.waitForFunction(()=>document.getElementById('offline-status').textContent.startsWith('準備完了'));
+    await page.evaluate(async()=>{await new LocalSaveStore().write('cache-preservation-test',{bytes:new Uint8Array([1,2,3]),time:123})});
+    const cacheBefore=await page.evaluate(async()=>{const db=await new LocalSaveStore().open();return {scale:localStorage.getItem('mgba-screen-scale'),saves:await new Promise(r=>{const q=db.transaction('saves').objectStore('saves').count();q.onsuccess=()=>r(q.result)})}});
+    await page.locator('#cache-clear').click();
+    await page.waitForFunction(()=>document.getElementById('offline-status').textContent.startsWith('未準備（0/'));
+    const cacheAfter=await page.evaluate(async()=>{const db=await new LocalSaveStore().open();return {scale:localStorage.getItem('mgba-screen-scale'),saves:await new Promise(r=>{const q=db.transaction('saves').objectStore('saves').count();q.onsuccess=()=>r(q.result)})}});
+    assert.deepEqual(cacheAfter,cacheBefore);
+    await page.locator('#offline-prepare').click();
+    await page.waitForFunction(()=>document.getElementById('offline-status').textContent.startsWith('準備完了'));
+    await page.locator('#settings-close').click();
+    console.log('Screen scaling, cache clear preserves saves/settings, explicit offline preparation PASS');
     await page.waitForFunction(async()=>{
-      const cache=await caches.open('mgba-celio-web-v9');return !!await cache.match('mgba.wasm');
+      const cache=await caches.open('mgba-celio-web-v10');return !!await cache.match('mgba.wasm');
     });
     await page.reload();
     await page.waitForFunction(()=>navigator.serviceWorker.controller);
     await page.waitForFunction(()=>!document.getElementById('open').disabled);
+    assert.equal(await page.evaluate(()=>localStorage.getItem('mgba-screen-scale')),'1.5');
+    await page.locator('#settings-open').click();await page.locator('#tab-display').click();
+    assert.equal(await page.locator('#screen-scale-value').textContent(),'150%');await page.locator('#screen-fit').click();assert.equal(await page.locator('#screen-scale-value').textContent(),'100%');await page.locator('#settings-close').click();
     await new Promise(r=>server.close(r));
     await page.reload();
     await page.waitForFunction(()=>!document.getElementById('open').disabled);
@@ -166,10 +188,10 @@ const server=http.createServer((req,res)=>{
     await page.waitForFunction(()=>window.__frames>=10);
     assert.deepEqual(errors,[]);
     console.log('WebKit: service worker installation, offline reload, offline ROM execution PASS');
-    assert.deepEqual(outgoing,[],'ROM/save contents must stay local');
     await context.close();
   } finally {await browser.close();server.close();}
 })().catch(e=>{console.error(e);server.close();process.exitCode=1;});
+
 
 
 

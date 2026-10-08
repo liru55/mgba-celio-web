@@ -1,6 +1,17 @@
 /* Mozilla Public License 2.0; see ../LICENSE. */
 (async () => {
   const $ = id => document.getElementById(id), status = $('status');
+  let screenScale = 1;
+  try { screenScale = Math.max(.5, Math.min(2, Number(localStorage.getItem('mgba-screen-scale')) || 1)); } catch (_) {}
+  function applyScreenScale() {
+    document.documentElement.style.setProperty('--screen-scale', screenScale);
+    $('screen-scale').value = screenScale;
+    $('screen-scale-value').textContent = Math.round(screenScale * 100) + '%';
+    try { localStorage.setItem('mgba-screen-scale', screenScale); } catch (_) {}
+  }
+  $('screen-scale').oninput = () => { screenScale = Number($('screen-scale').value); applyScreenScale(); };
+  $('screen-fit').onclick = () => { screenScale = 1; applyScreenScale(); };
+  applyScreenScale();
   let m;
   try { m = await createMGBA(); } catch (e) { status.textContent = `読み込み失敗: ${e.message}`; return; }
   const canvas = $('screen'), ctx = canvas.getContext('2d');
@@ -340,5 +351,5 @@
     requestAnimationFrame(tick);
   }
   requestAnimationFrame(tick);
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+
 })();

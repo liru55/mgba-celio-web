@@ -29,7 +29,7 @@ const server=http.createServer((req,res)=>{
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
     await page.waitForFunction(()=>!document.getElementById('open').disabled);
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
-    await page.locator('#open').click();
+    await page.locator('#welcome-open').click();
     const rom=Buffer.alloc(32768);rom.set([0xc3,0x50,0x01],0x100);rom.set([0xce,0xed,0x66,0x66],0x104);rom.set([0x3e,0x0a,0xea,0,0,0x18,0xfe],0x150);rom[0x147]=3;rom[0x149]=2;
     await page.locator('#rom').setInputFiles({name:'smoke.gb',mimeType:'application/octet-stream',buffer:rom});
     await page.waitForFunction(()=>window.__frames>=10);
@@ -90,7 +90,7 @@ const server=http.createServer((req,res)=>{
     await page.keyboard.press('Space');
     await page.locator('#settings-open').click();await page.locator('#tab-controls').click();await page.locator('#show-quick').uncheck();assert.equal(await page.locator('#speed-toggle').isVisible(),false);await page.locator('#show-quick').check();await page.locator('#settings-close').click();
     console.log('Visible speed ON/OFF, complete quick state with save RAM restore, UI visibility switch PASS');
-    await page.waitForFunction(()=>document.getElementById('pause').textContent==='一時停止');await page.locator('#quick-save').focus();
+    await page.waitForFunction(()=>document.getElementById('pause').textContent==='一時停止');await page.locator('#pause').focus();
     const download=page.waitForEvent('download');await page.keyboard.press('Control+s');const d=await download;
     assert.equal(d.suggestedFilename(),'smoke.sav');assert.equal(fs.statSync(await d.path()).size,8192);
     await page.locator('#save').setInputFiles({name:'smoke.sav',mimeType:'application/octet-stream',buffer:Buffer.alloc(8192,0x5a)});
@@ -102,7 +102,7 @@ const server=http.createServer((req,res)=>{
     await page.locator('#settings-open').click(); await page.locator('#tab-controls').click();
     await page.locator('#pad-scale').evaluate(el=>{el.value='.6';el.dispatchEvent(new Event('input'));});
     await page.locator('#pad-opacity').evaluate(el=>{el.value='.4';el.dispatchEvent(new Event('input'));});
-    await page.locator('#pad-edit').click();
+    await page.locator('#overlay').check();await page.locator('#pad-edit').click();
     const box=await page.locator('.dpad').boundingBox();
     await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();
     await page.mouse.move(box.x+box.width/2+20,box.y+box.height/2-15,{steps:5});await page.mouse.up();
@@ -141,7 +141,7 @@ const server=http.createServer((req,res)=>{
     assert.equal(await page.locator('.play').evaluate(el=>el.classList.contains('touch-hidden')),false);
     await page.locator('#settings-open').click();await page.locator('#tab-controls').click();
     await page.screenshot({path:path.join(__dirname,'controller-settings.png'),fullPage:true});
-    await page.locator('#tab-help').click();assert.match(await page.locator('#panel-help').textContent(),/任天堂/);
+    await page.locator('#tab-general').click();assert.match(await page.locator('#panel-help').textContent(),/任天堂/);
     await page.locator('#settings-close').click();
     await page.screenshot({path:path.join(__dirname,'new-ui.png'),fullPage:true});
     await page.locator('#settings-open').click();await page.locator('#tab-cheats').click();
@@ -189,12 +189,12 @@ const server=http.createServer((req,res)=>{
     assert.equal(await page.locator('#auto-save').isChecked(),false);
     await page.locator('#settings-close').click();
     await page.locator('#settings-open').click();await page.locator('#tab-display').click();
-    await page.locator('#volume').evaluate(el=>{el.value='.45';el.dispatchEvent(new Event('input'));});await page.locator('#mute').check();
+    await page.locator('#tab-audio').click();await page.locator('#volume').evaluate(el=>{el.value='.45';el.dispatchEvent(new Event('input'));});await page.locator('#mute').check();
     assert.equal(await page.locator('#volume-value').textContent(),'45%');
     const sound=await page.evaluate(()=>JSON.parse(localStorage.getItem('mgba-sound')));assert.equal(sound.volume,.45);assert.equal(sound.muted,true);
-    const capture=page.waitForEvent('download');await page.locator('#screenshot-save').click();const png=await capture;
+    await page.locator('#tab-display').click();const capture=page.waitForEvent('download');await page.locator('#screenshot-save').click();const png=await capture;
     assert.equal(png.suggestedFilename(),'renamed-game.png');assert.deepEqual(Array.from(fs.readFileSync(await png.path()).subarray(0,8)),[137,80,78,71,13,10,26,10]);
-    await page.locator('#settings-close').click();assert.equal(await page.locator('main > a.help-link').isVisible(),true);
+    await page.locator('#settings-close').click();await page.locator('#about-open').click();assert.equal(await page.locator('#panel-help a.help-link').isVisible(),true);await page.locator('#settings-close').click();
     const help=await context.newPage();await help.goto(`http://127.0.0.1:${server.address().port}/help.html`);
     assert.equal(await help.getByRole('heading',{name:'使い方',exact:true}).count(),1);assert.equal(await help.locator('nav a').count(),7);await help.close();
     console.log('Mute/volume persistence, PNG screenshot download, visible help link and guide PASS');
@@ -208,7 +208,7 @@ const server=http.createServer((req,res)=>{
     await page.screenshot({path:path.join(__dirname,'browser-test.png'),fullPage:true});
     const desktop=await browser.newContext({viewport:{width:1000,height:700}}),native=await desktop.newPage();
     await native.goto(`http://127.0.0.1:${server.address().port}/`);await native.waitForFunction(()=>!document.getElementById('open').disabled);
-    await native.locator('#fullscreen').click();await native.waitForFunction(()=>document.fullscreenElement || document.body.classList.contains('expanded'));
+    await native.locator('#rom').setInputFiles({name:'fullscreen.gb',mimeType:'application/octet-stream',buffer:rom});await native.waitForFunction(()=>document.querySelector('.play.has-rom'));await native.locator('#fullscreen').click();await native.waitForFunction(()=>document.fullscreenElement || document.body.classList.contains('expanded'));
     const actualNative=await native.evaluate(()=>!!document.fullscreenElement);
     assert.equal(await native.locator('#fullscreen-exit').isVisible(),true);
     await native.locator('#fullscreen-exit').click();await native.waitForFunction(()=>!document.fullscreenElement&&!document.body.classList.contains('expanded'));
@@ -217,11 +217,11 @@ const server=http.createServer((req,res)=>{
     await page.locator('#screen-scale').evaluate(el=>{el.value='1.5';el.dispatchEvent(new Event('input',{bubbles:true}));});
     assert.equal(await page.locator('#screen-scale-value').textContent(),'150%');
     assert.equal(await page.evaluate(()=>getComputedStyle(document.getElementById('screen')).transform),'matrix(1.5, 0, 0, 1.5, 0, 0)');
-    await page.locator('#tab-help').click();
+    await page.locator('#tab-general').click();
     await page.waitForFunction(()=>document.getElementById('offline-status').textContent.startsWith('準備完了'));
     await page.evaluate(async()=>{await new LocalSaveStore().write('cache-preservation-test',{bytes:new Uint8Array([1,2,3]),time:123})});
     const cacheBefore=await page.evaluate(async()=>{const db=await new LocalSaveStore().open();return {scale:localStorage.getItem('mgba-screen-scale'),saves:await new Promise(r=>{const q=db.transaction('saves').objectStore('saves').count();q.onsuccess=()=>r(q.result)})}});
-    await page.locator('#cache-clear').click();
+    await page.locator('#cache-clear-main').click();
     await page.waitForFunction(()=>document.getElementById('offline-status').textContent.startsWith('未準備（0/'));
     const cacheAfter=await page.evaluate(async()=>{const db=await new LocalSaveStore().open();return {scale:localStorage.getItem('mgba-screen-scale'),saves:await new Promise(r=>{const q=db.transaction('saves').objectStore('saves').count();q.onsuccess=()=>r(q.result)})}});
     assert.deepEqual(cacheAfter,cacheBefore);
@@ -230,14 +230,14 @@ const server=http.createServer((req,res)=>{
     await page.locator('#settings-close').click();
     console.log('Screen scaling, cache clear preserves saves/settings, explicit offline preparation PASS');
     await page.waitForFunction(async()=>{
-      const cache=await caches.open('mgba-celio-web-v19');return !!await cache.match('mgba.wasm');
+      const cache=await caches.open('mgba-celio-web-v21');return !!await cache.match('mgba.wasm');
     });
     await page.reload();
     await page.waitForFunction(()=>navigator.serviceWorker.controller);
     await page.waitForFunction(()=>!document.getElementById('open').disabled);
     assert.equal(await page.evaluate(()=>localStorage.getItem('mgba-screen-scale')),'1.5');
     assert.equal(await page.evaluate(()=>localStorage.getItem('mgba-dpad-linked')),'false');
-    await page.locator('#settings-open').click();await page.locator('#tab-display').click();
+    await page.locator('#about-open').click();await page.locator('#tab-display').click();
     assert.equal(await page.locator('#screen-scale-value').textContent(),'150%');await page.locator('#screen-fit').click();assert.equal(await page.locator('#screen-scale-value').textContent(),'100%');await page.locator('#screen-effect').selectOption('xbrz');await page.locator('#settings-close').click();
     await new Promise(r=>server.close(r));
     await page.reload();

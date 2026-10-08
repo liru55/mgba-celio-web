@@ -1,0 +1,110 @@
+const {webkit, devices}=require('playwright');
+const http=require('node:http'), fs=require('node:fs'), path=require('node:path'), assert=require('node:assert/strict');
+const root=path.resolve(__dirname,'../build-web');
+const server=http.createServer((req,res)=>{
+  const file=path.join(root,new URL(req.url,'http://localhost').pathname.replace(/^\//,'')||'index.html');
+  if(!file.startsWith(root+path.sep)) {res.writeHead(403).end();return;}
+  const types={'.html':'text/html','.js':'application/javascript','.wasm':'application/wasm','.png':'image/png','.webmanifest':'application/manifest+json'};
+  fs.readFile(file,(err,data)=>{if(err){res.writeHead(404).end();return;}res.setHeader('Content-Type',types[path.extname(file)]||'application/octet-stream');res.end(data);});
+});
+(async()=>{
+  await new Promise(r=>server.listen(0,'127.0.0.1',r));
+  const browser=await webkit.launch({headless:true});
+  try {
+    const context=await browser.newContext({...devices['iPhone 13']});
+    await context.addInitScript(()=>{
+      let create;
+      Object.defineProperty(window,'createMGBA',{configurable:true,get:()=>create,set:fn=>{
+        create=async(...args)=>{const m=await fn(...args); window.__frames=0; window.__lastKeys=0;
+          const frame=m._web_frame; m._web_frame=keys=>{window.__frames++;window.__lastKeys=keys;return frame(keys);};
+          window.__m=m; return m;};
+      }});
+    });
+    await context.addInitScript(()=>{window.__pads=[];Object.defineProperty(navigator,'getGamepads',{value:()=>window.__pads,configurable:true});});
+    const page=await context.newPage(), errors=[];
+    page.on('pageerror',e=>errors.push(e.message));
+    const outgoing=[];page.on('request',r=>{if(r.method()!=='GET')outgoing.push(r.method()+' '+r.url());});
+    await page.goto(`http://127.0.0.1:${server.address().port}/`);
+    await page.waitForFunction(()=>!document.getElementById('open').disabled);
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+    await page.locator('#open').click();
+    const rom=Buffer.alloc(32768);rom.set([0xc3,0x50,0x01],0x100);rom.set([0xce,0xed,0x66,0x66],0x104);rom.set([0x18,0xfe],0x150);rom[0x147]=3;rom[0x149]=2;
+    await page.locator('#rom').setInputFiles({name:'smoke.gb',mimeType:'application/octet-stream',buffer:rom});
+    await page.waitForFunction(()=>window.__frames>=10);
+    assert.deepEqual(await page.locator('#screen').evaluate(c=>[c.width,c.height]),[160,144]);
+    assert.equal(await page.locator('#screen').evaluate(c=>c.getContext('2d').getImageData(0,0,1,1).data[3]),255);
+    await page.keyboard.press('Space');
+    assert.equal(await page.locator('#pause').textContent(),'再開');
+    await page.keyboard.press('Space');
+    await page.keyboard.down('z');await page.waitForFunction(()=>window.__lastKeys===1);await page.keyboard.up('z');
+    const touch=page.locator('[data-key="0"]');await touch.dispatchEvent('pointerdown',{pointerId:1,pointerType:'touch'});
+    await page.waitForFunction(()=>window.__lastKeys===1);await touch.dispatchEvent('pointercancel',{pointerId:1,pointerType:'touch'});
+    await page.waitForFunction(()=>window.__lastKeys===0);
+    const download=page.waitForEvent('download');await page.keyboard.press('Control+s');const d=await download;
+    assert.equal(d.suggestedFilename(),'smoke.sav');assert.equal(fs.statSync(await d.path()).size,8192);
+    await page.locator('#save').setInputFiles({name:'smoke.sav',mimeType:'application/octet-stream',buffer:Buffer.alloc(8192,0x5a)});
+    await page.waitForFunction(()=>document.getElementById('status').textContent==='セーブを読み込みました');
+    await page.keyboard.press('Control+r');
+    const manifest=await page.evaluate(async()=>await (await fetch('manifest.webmanifest')).json());assert.equal(manifest.display,'standalone');
+    assert.equal(await page.locator('#rom').getAttribute('accept'),null);
+    assert.equal(await page.locator('#save').getAttribute('accept'),null);
+    await page.locator('#settings-open').click(); await page.locator('#tab-display').click();
+    await page.locator('#pad-scale').evaluate(el=>{el.value='.6';el.dispatchEvent(new Event('input'));});
+    await page.locator('#pad-opacity').evaluate(el=>{el.value='.4';el.dispatchEvent(new Event('input'));});
+    await page.locator('#pad-edit').click();
+    const box=await page.locator('.dpad').boundingBox();
+    await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();
+    await page.mouse.move(box.x+box.width/2+20,box.y+box.height/2-15,{steps:5});await page.mouse.up();
+    const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('mgba-touch-layout')));
+    assert.equal(saved.scale,.6);assert.equal(saved.opacity,.4);assert.ok(saved.positions.dpad);
+    await page.locator('#edit-done').click();
+    await page.locator('#overlay').uncheck();assert.equal(await page.locator('.play').evaluate(el=>el.classList.contains('overlay')),false);
+    await page.locator('#overlay').check();
+    await page.locator('#settings-close').click();
+    if ((await page.locator('#pause').textContent())==='再開') await page.locator('#pause').click();
+    await page.evaluate(()=>{window.__pads=[null,{id:'Virtual standard pad',index:1,connected:true,mapping:'standard',axes:[0,0],buttons:Array.from({length:20},()=>({pressed:false,value:0}))}];});
+    await page.waitForFunction(()=>document.getElementById('controller-badge').textContent==='パッド接続中');
+    const defaults=[0,1,8,9,15,14,12,13,5,4];
+    for(let bit=0;bit<10;bit++){
+      await page.evaluate(index=>{for(const b of window.__pads[1].buttons){b.pressed=false;b.value=0;}window.__pads[1].buttons[index]={pressed:true,value:1};},defaults[bit]);
+      await page.waitForFunction(mask=>window.__lastKeys===mask,1<<bit);
+    }
+    await page.evaluate(()=>{for(const b of window.__pads[1].buttons){b.pressed=false;b.value=0;}window.__pads[1].axes=[.1,-.1];});
+    await page.waitForFunction(()=>window.__lastKeys===0);
+    await page.evaluate(()=>{window.__pads[1].axes=[.7,-.8];window.__pads[1].buttons[0]={pressed:true,value:1};});
+    await page.waitForFunction(()=>window.__lastKeys===81);
+    await page.locator('#settings-open').click();await page.locator('#tab-controls').click();
+    const frames=await page.evaluate(()=>window.__frames);await page.waitForTimeout(150);assert.equal(await page.evaluate(()=>window.__frames),frames);
+    await page.locator('#hide-touch').check();await page.waitForFunction(()=>document.querySelector('.play').classList.contains('touch-hidden'));
+    await page.locator('#controller-preset').selectOption('nintendo');
+    await page.locator('#settings-close').click();
+    await page.evaluate(()=>{window.__pads[1].axes=[0,0];window.__pads[1].buttons[0]={pressed:false,value:0};window.__pads[1].buttons[1]={pressed:true,value:1};});
+    await page.waitForFunction(()=>window.__lastKeys===1);
+    await page.evaluate(()=>window.__pads=[]);
+    await page.waitForFunction(()=>window.__lastKeys===0);
+    assert.equal(await page.locator('.play').evaluate(el=>el.classList.contains('touch-hidden')),false);
+    await page.locator('#settings-open').click();await page.locator('#tab-controls').click();
+    await page.locator('#tab-help').click();assert.match(await page.locator('#panel-help').textContent(),/任天堂/);
+    await page.locator('#settings-close').click();
+    console.log('Gamepad: all 10 buttons, sparse list, stick diagonal/deadzone, A/B preset, modal pause, hide touch, disconnect release PASS');
+    console.log('Overlay controls: drag position, scale, opacity, layout storage, toggle, unrestricted file pickers PASS');
+    console.log('WebKit iPhone viewport: WASM, ROM, canvas, frame loop, audio path, keys, save import/export, PWA manifest PASS');
+    assert.deepEqual(errors,[]);
+    await page.waitForFunction(async()=>{
+      const cache=await caches.open('mgba-celio-web-v5');return !!await cache.match('mgba.wasm');
+    });
+    await page.reload();
+    await page.waitForFunction(()=>navigator.serviceWorker.controller);
+    await page.waitForFunction(()=>!document.getElementById('open').disabled);
+    await new Promise(r=>server.close(r));
+    await page.reload();
+    await page.waitForFunction(()=>!document.getElementById('open').disabled);
+    await page.locator('#rom').setInputFiles({name:'offline.gb',mimeType:'application/octet-stream',buffer:rom});
+    await page.waitForFunction(()=>window.__frames>=10);
+    assert.deepEqual(errors,[]);
+    console.log('WebKit: service worker installation, offline reload, offline ROM execution PASS');
+    assert.deepEqual(outgoing,[], 'ROM/save selection must not send requests with a body');
+    await context.close();
+  } finally {await browser.close();server.close();}
+})().catch(e=>{console.error(e);server.close();process.exitCode=1;});
+

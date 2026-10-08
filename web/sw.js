@@ -1,4 +1,4 @@
-const CACHE = 'mgba-celio-web-v26';
+const CACHE = 'mgba-celio-web-v27';
 const FILES = ['./','index.html','app.js','ui.js','skins.js','vendor/fflate.min.js','vendor/pdf.min.js','vendor/pdf.worker.min.js','memory-viewer.js','celio-serial.js','link-session.js','offline.js','screen-effects.js','shaders/xbrz-pass0.glsl','shaders/xbrz-pass1.glsl','controller.js','storage.js','styles.css','help.html','mgba.js','mgba.wasm','manifest.webmanifest','icon-256.png','icon-512.png'];
 async function prepare() {
   const cache = await caches.open(CACHE);

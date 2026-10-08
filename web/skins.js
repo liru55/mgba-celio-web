@@ -81,11 +81,20 @@ window.createSkins=({m,$,available,onKeys,blocked,action,pulse,onLayout})=>{
       let areaWidth=w,areaHeight=w*size.height/size.width,top=0,left=0;
       const paddingTop=fullscreen?48:0;
       if(fullscreen){const availableHeight=Math.max(80,play.clientHeight-toolbar-paddingTop);if(sf){areaWidth=Math.min(w,availableHeight*size.width/size.height);areaHeight=areaWidth*size.height/size.width;top=paddingTop+(availableHeight-areaHeight)/2;left=(w-areaWidth)/2;}else{areaHeight=Math.min(areaHeight,availableHeight*.48);areaWidth=areaHeight*size.width/size.height;left=(w-areaWidth)/2;top=paddingTop+availableHeight-areaHeight;}}
-      else{const screenHeight=sf?0:w/gameAspect;top=screenHeight;play.style.setProperty('--skin-height',(screenHeight+areaHeight)+'px');}
+      else{
+        // Fit the whole console, not just its width: portrait skins can be very tall.
+        const documentTop=play.getBoundingClientRect().top+scrollY;
+        const availableHeight=Math.max(160,innerHeight-documentTop-toolbar-16);
+        const naturalHeight=areaHeight+(sf?0:w/gameAspect);
+        const scale=Math.min(1,availableHeight/naturalHeight);
+        areaWidth=w*scale;areaHeight=areaWidth*size.height/size.width;
+        left=(w-areaWidth)/2;top=sf?0:areaWidth/gameAspect;
+        play.style.setProperty('--skin-height',(top+areaHeight)+'px');
+      }
       for(const el of [art,controls]){el.style.left=left+'px';el.style.top=top+'px';el.style.width=areaWidth+'px';el.style.height=areaHeight+'px';}
       let f;
       if(sf)f={x:left+sf.x/size.width*areaWidth,y:top+sf.y/size.height*areaHeight,width:sf.width/size.width*areaWidth,height:sf.height/size.height*areaHeight};
-      else f={x:0,y:paddingTop,width:w,height:fullscreen?Math.max(1,top-paddingTop):top};
+      else f={x:fullscreen?0:left,y:paddingTop,width:fullscreen?w:areaWidth,height:fullscreen?Math.max(1,top-paddingTop):top};
       Object.assign(viewport.style,{left:f.x+'px',top:f.y+'px',width:f.width+'px',height:f.height+'px'});
     }finally{applying=false;}
   }

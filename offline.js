@@ -24,9 +24,16 @@
     status.textContent = type === 'PREPARE' ? 'オフライン用のファイルを保存中…' : 'キャッシュを削除中…';
     if (type === 'CLEAR') clearStatus.textContent = 'キャッシュを削除中…';
     try {
+      if (type === 'CLEAR') {
+        if(!navigator.onLine)throw new Error('再読み込みのためインターネットに接続してください。');
+        await window.prepareCacheReload?.();
+      }
       if (type === 'PREPARE') { try { await navigator.storage?.persist?.(); } catch (_) {} }
       show(await request(type));
-      if (type === 'CLEAR') clearStatus.textContent = 'キャッシュを削除しました。セーブデータ・設定は残っています。再読み込みすると最新版を読み込みます。';
+      if (type === 'CLEAR') {
+        clearStatus.textContent = 'キャッシュを削除しました。再読み込みしています…';
+        location.reload();
+      }
     } catch (error) {
       status.textContent = `${type === 'CLEAR' ? 'キャッシュを削除できませんでした' : '準備できませんでした'}：${error.message}`;
       if (type === 'CLEAR') clearStatus.textContent = status.textContent;

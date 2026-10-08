@@ -109,7 +109,12 @@ const server=http.createServer((req,res)=>{
     const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('mgba-touch-layout')));
     assert.equal(saved.scale,.6);assert.equal(saved.opacity,.4);assert.ok(saved.positions.dpad);
     await page.locator('#edit-done').click();
-    await page.locator('#overlay').uncheck();assert.equal(await page.locator('.play').evaluate(el=>el.classList.contains('overlay')),false);
+    await page.locator('#overlay').uncheck();
+    await page.evaluate(()=>{document.querySelector('.dpad').classList.add('linked')});
+    assert.equal(await page.locator('.dpad').evaluate(el=>getComputedStyle(el).position),'relative');
+    const cross=await page.locator('.dpad').evaluate(el=>({width:parseFloat(getComputedStyle(el,'::before').width),height:parseFloat(getComputedStyle(el,'::before').height),ownWidth:el.offsetWidth,ownHeight:el.offsetHeight}));assert.ok(Math.abs(cross.width-cross.ownWidth)<1);assert.ok(Math.abs(cross.height-cross.ownHeight)<1);
+    await page.evaluate(()=>{document.querySelector('.dpad').classList.remove('linked')});
+    assert.equal(await page.locator('.play').evaluate(el=>el.classList.contains('overlay')),false);
     await page.locator('#overlay').check();
     await page.locator('#settings-close').click();
     if ((await page.locator('#pause').textContent())==='再開') await page.locator('#pause').click();
@@ -225,7 +230,7 @@ const server=http.createServer((req,res)=>{
     await page.locator('#settings-close').click();
     console.log('Screen scaling, cache clear preserves saves/settings, explicit offline preparation PASS');
     await page.waitForFunction(async()=>{
-      const cache=await caches.open('mgba-celio-web-v11');return !!await cache.match('mgba.wasm');
+      const cache=await caches.open('mgba-celio-web-v12');return !!await cache.match('mgba.wasm');
     });
     await page.reload();
     await page.waitForFunction(()=>navigator.serviceWorker.controller);

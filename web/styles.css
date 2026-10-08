@@ -1309,6 +1309,9 @@ body:not(.ui-loaded) .memory-panel,.clean-view .memory-panel { display:none; }
 .delta-controls .delta-hit { position:absolute; pointer-events:auto; touch-action:none; background:transparent; border:0; border-radius:6px; padding:0; min-height:0; min-width:0; box-shadow:none; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
 .delta-controls .delta-hit.pressed { background:rgba(255,255,255,.13); }
 .play:not(.has-rom) .delta-art,.play:not(.has-rom) .delta-controls,.clean-view .delta-art,.clean-view .delta-controls { display:none!important; }
-.play.delta-skin .emulator-toolbar { z-index:9; }
+/* Skin layers are absolute; reserve row 1 for artwork and row 2 for the toolbar. */
+.play.delta-skin { grid-template-columns:minmax(0,1fr); }
+.play.delta-skin .emulator-toolbar { grid-row:2; grid-column:1; align-self:start; z-index:9; }
+.play.delta-skin .screen-viewport { grid-row:1; grid-column:1; }
 
 .play.delta-skin .quick-action.custom-position { position:static; transform:none; max-width:none; }

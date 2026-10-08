@@ -90,6 +90,7 @@ const server=http.createServer((req,res)=>{
     await page.keyboard.press('Space');
     await page.locator('#settings-open').click();await page.locator('#tab-controls').click();await page.locator('#show-quick').uncheck();assert.equal(await page.locator('#quick-actions').isVisible(),false);await page.locator('#show-quick').check();await page.locator('#settings-close').click();
     console.log('Visible speed ON/OFF, complete quick state with save RAM restore, UI visibility switch PASS');
+    await page.waitForFunction(()=>document.getElementById('pause').textContent==='一時停止');await page.locator('#quick-save').focus();
     const download=page.waitForEvent('download');await page.keyboard.press('Control+s');const d=await download;
     assert.equal(d.suggestedFilename(),'smoke.sav');assert.equal(fs.statSync(await d.path()).size,8192);
     await page.locator('#save').setInputFiles({name:'smoke.sav',mimeType:'application/octet-stream',buffer:Buffer.alloc(8192,0x5a)});

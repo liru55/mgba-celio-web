@@ -156,7 +156,7 @@
     $('fullscreen-exit').hidden = !active;
     $('fullscreen-layout').hidden = !active;
     $('fullscreen').textContent = active ? '戻る' : '全画面';
-    applyLayout(); release();
+    applyLayout(); release();skins?.refresh();
   }
   async function exitFullscreen() {
     document.body.classList.remove('expanded');

@@ -96,6 +96,8 @@ Mozilla Public License 2.0。元の著作権表示と第三者ライセンスを
 検証: `node web/test-celio-core.cjs` はCelioデバイスのハンドシェイク・CRC・パケット・再接続を確認。`node web/test-quick-layout.cjs` はPC・縦向き・横向きのUI、独立配置、端末内通信を確認。`CELIO_ONLINE=1 node web/test-celio-online.cjs` を実行すると公開Celioサーバーへ合成ROMだけで2クライアント接続し、ケーブルパケットの到達を確認します。Playwrightが必要です。
 
 
+上流rom64のfc7defadcを取り込みました（1MiBフラッシュセーブ、CPUオーバークロック（既定2倍）、0x01000000の16MiB追加RAM、LTO既定オフ）。
+
 上流rom64のc5a0ba984を取り込みました。今回の上流更新はWindows版のUSB変換器を使った実機GBA通信です。Web版でもWeb Serialを使った直接接続と実機オンライン参加を追加しました。既存の端末内・オンライン通信も維持しています。L・Rボタンは独立して移動でき、操作設定でそれぞれの大きさを調整できます。
 
 USB接続にはGBLink／CelioのUSBシリアル変換器とGBA通信ケーブルが必要です。対応PCのChrome／Edge向けで、iPhone/iPadのSafariでは利用できません。実機は32MBまでのROMカートリッジが対象です。実機のセーブは実機側で行います。ユーザーの指定により、この追加実装のテストは省略しています。実物の変換器・GBAでの通信は未検証です。

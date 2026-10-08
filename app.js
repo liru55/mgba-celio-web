@@ -4,7 +4,9 @@
   let m;
   try { m = await createMGBA(); } catch (e) { status.textContent = `読み込み失敗: ${e.message}`; return; }
   const canvas = $('screen'), ctx = canvas.getContext('2d');
-  let loaded = false, paused = false, keys = 0, image, pixelRows = [], pixelHeap, cheats = [], name = 'game', clock = 0, nextAudio = 0, audioContext;
+  let loaded = false, paused = false, keys = 0, image, pixelRows = [], pixelHeap, cheats = [], name = 'game', clock = 0, nextAudio = 0, audioContext, audioGain;
+  let volume = 1, muted = false;
+  try { const sound = JSON.parse(localStorage.getItem('mgba-sound')); if (sound) { volume = Math.max(0,Math.min(1,Number(sound.volume) || 0)); muted = !!sound.muted; } } catch (_) {}
   let romKey = '', romLoading = false, loadSerial = 0, autoSave = true;
   try { autoSave = localStorage.getItem('mgba-auto-save') !== 'false'; } catch (_) {}
   let focused = true;
@@ -15,6 +17,7 @@
   function release() { document.querySelectorAll('.pressed').forEach(b => b.classList.remove('pressed')); held.clear(); touches.clear(); updateKeys(); clock = 0; nextAudio = 0; }
   async function enableAudio() {
     audioContext ||= new (window.AudioContext || window.webkitAudioContext)();
+    if (!audioGain) { audioGain = audioContext.createGain(); audioGain.connect(audioContext.destination); audioGain.gain.value = muted ? 0 : volume; }
     await audioContext.resume();
   }
   function upload(bytes, call) {
@@ -63,7 +66,7 @@
     } catch (e) { status.textContent = e.message; }
     romLoading = false;
     for (const id of ['pause','reset','export','import']) $(id).disabled = !loaded;
-    $('quick-save').disabled = !loaded; $('cheat-add').disabled = !loaded;
+    $('screenshot-save').disabled = !loaded; $('quick-save').disabled = !loaded; $('cheat-add').disabled = !loaded;
     $('browser-save-now').disabled = !loaded; $('browser-save-delete').disabled = !loaded;
     $('rom').value = '';
   };
@@ -214,71 +217,11 @@
   }
   applyLayout();
   matchMedia('(orientation:landscape)').addEventListener('change', () => { drag = null; release(); applyLayout(); });
-  const defaultButtons = [0,1,8,9,15,14,12,13,5,4];
-  let controllerConfig = {enabled:true,preset:'standard',deadzone:.25,hideTouch:false,selected:'auto',buttons:[...defaultButtons]};
-  try { const saved = JSON.parse(localStorage.getItem('mgba-controller')); if (saved) controllerConfig = {...controllerConfig,...saved}; } catch (_) {}
-  const names = ['A','B','SELECT','START','→','←','↑','↓','R','L'];
-  let controllerSignature = '', lastControllerLabel = '', lastLive = '';
-  function storeController() { try { localStorage.setItem('mgba-controller',JSON.stringify(controllerConfig)); } catch (_) {} }
-  function syncControllerUI() {
-    $('controller-enabled').checked = controllerConfig.enabled;
-    $('controller-preset').value = controllerConfig.preset;
-    $('deadzone').value = controllerConfig.deadzone;
-    $('deadzone-value').value = Math.round(controllerConfig.deadzone*100)+'%';
-    $('hide-touch').checked = controllerConfig.hideTouch;
-    $('controller-mapping').replaceChildren();
-    names.forEach((name,bit) => {
-      const label = document.createElement('label'), select = document.createElement('select'); label.textContent = name;
-      select.setAttribute('aria-label',name+'の割り当て');
-      for (let i=-1;i<32;i++) { const option = document.createElement('option'); option.value = i; option.textContent = i<0 ? '割り当てなし' : 'ボタン '+i; select.append(option); }
-      select.value = controllerConfig.buttons[bit];
-      select.onchange = () => { controllerConfig.buttons[bit] = +select.value; controllerConfig.preset = 'custom'; $('controller-preset').value = 'custom'; storeController(); };
-      label.append(select); $('controller-mapping').append(label);
-    });
-  }
-  $('controller-enabled').onchange = () => { controllerConfig.enabled = $('controller-enabled').checked; padKeys = 0; updateKeys(); storeController(); };
-  $('controller-select').onchange = () => { controllerConfig.selected = $('controller-select').value; padKeys = 0; updateKeys(); storeController(); };
-  $('controller-preset').onchange = () => {
-    controllerConfig.preset = $('controller-preset').value;
-    if (controllerConfig.preset !== 'custom') { controllerConfig.buttons = [...defaultButtons]; if (controllerConfig.preset === 'nintendo') { controllerConfig.buttons[0]=1; controllerConfig.buttons[1]=0; } }
-    syncControllerUI(); storeController();
-  };
-  $('deadzone').oninput = () => { controllerConfig.deadzone = +$('deadzone').value; $('deadzone-value').value = Math.round(controllerConfig.deadzone*100)+'%'; storeController(); };
-  $('hide-touch').onchange = () => { controllerConfig.hideTouch = $('hide-touch').checked; release(); storeController(); };
-  $('controller-default').onclick = () => { controllerConfig.buttons = [...defaultButtons]; controllerConfig.preset = 'standard'; syncControllerUI(); storeController(); };
-  syncControllerUI();
-  function pollController() {
-    let pads = [], failure = '';
-    try { if (navigator.getGamepads) pads = Array.from(navigator.getGamepads()).filter(p=>p && p.connected); else failure = 'このブラウザはコントローラーに対応していません'; }
-    catch (_) { failure = 'ブラウザでコントローラーへのアクセスが許可されていません'; }
-    const signature = pads.map(p=>p.index+':'+p.id).join('|');
-    if (signature !== controllerSignature) {
-      controllerSignature = signature;
-      $('controller-select').replaceChildren(new Option('自動で選ぶ','auto'),...pads.map(p=>new Option(p.id,String(p.index))));
-      $('controller-select').value = pads.some(p=>String(p.index)===controllerConfig.selected) ? controllerConfig.selected : 'auto';
-    }
-    const pad = pads.find(p=>String(p.index)===controllerConfig.selected) || pads[0];
-    const enabled = pad && controllerConfig.enabled;
-    const label = failure || (pad ? pad.id + (controllerConfig.enabled ? '：接続中' : '：入力オフ') + (pad.mapping !== 'standard' ? '（割り当てを確認してください）' : '') : '未接続。Bluetooth設定で接続し、コントローラーのボタンを押してください。');
-    if (label !== lastControllerLabel) {
-      lastControllerLabel = label; $('controller-status').textContent = label;
-      $('controller-badge').textContent = enabled ? 'パッド接続中' : pad ? 'パッドOFF' : 'パッド未接続';
-      $('controller-badge').classList.toggle('connected',!!enabled);
-    }
-    play.classList.toggle('touch-hidden',!!enabled && controllerConfig.hideTouch && !editing);
-    let mask = 0;
-    if (enabled) {
-      const pressed = pad.buttons.map((b,i)=>b.pressed || b.value>.5 ? i : -1).filter(i=>i>=0);
-      const live = pressed.length ? '入力中：ボタン '+pressed.join(', ') : 'ボタンを押すと番号が表示されます';
-      if (live !== lastLive) { lastLive = live; $('controller-live').textContent = live; }
-      controllerConfig.buttons.forEach((index,bit) => { if (index>=0 && (pad.buttons[index]?.pressed || pad.buttons[index]?.value>.5)) mask |= 1<<bit; });
-      const x = pad.axes[0] || 0, y = pad.axes[1] || 0, zone = controllerConfig.deadzone;
-      if (x>zone) mask |= 1<<4; if (x<-zone) mask |= 1<<5;
-      if (y>zone) mask |= 1<<7; if (y<-zone) mask |= 1<<6;
-    } else if (lastLive) { lastLive = ''; $('controller-live').textContent = 'ボタンを押すと番号が表示されます'; }
-    padKeys = menuOpen || editing || document.hidden || !focused ? 0 : mask;
-    updateKeys();
-  }
+  const controller = createController({$,play,release,
+    onKeys:mask => { padKeys = mask; updateKeys(); },
+    isBlocked:() => menuOpen || editing || document.hidden || !focused,
+    isEditing:() => editing
+  });
   $('clean-screen').onclick = () => {
     document.body.classList.add('clean-view');
     editing = false; applyLayout(); $('settings').close();
@@ -314,24 +257,8 @@
     if (result<0) { $('cheat-status').textContent = result===-1000 ? '追加できませんでした。入力サイズや登録数を確認してください。' : (-result)+'行目を読み込めません。コードと形式を確認してください。'; return; }
     cheats.push({name:title,enabled:true}); renderCheats(); $('cheat-code').value = ''; $('cheat-name').value = ''; $('cheat-status').textContent = '追加しました。チェックで有効・無効を切り替えられます。';
   };
-  let databasePromise;
-  function database() {
-    if (!databasePromise) databasePromise = new Promise((resolve,reject) => {
-      const request = indexedDB.open('mgba-local-saves',1);
-      request.onupgradeneeded = () => request.result.createObjectStore('saves');
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-      request.onblocked = () => reject(new Error('保存先を開けません'));
-    });
-    return databasePromise;
-  }
-  async function readBrowserSave(key) {
-    const db = await database();
-    return new Promise((resolve,reject) => {
-      const request = db.transaction('saves').objectStore('saves').get(key);
-      request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
-    });
-  }
+  const localSaves = new LocalSaveStore();
+  const readBrowserSave = key => localSaves.read(key);
   function browserSaveLabel(prefix,updated) { $('browser-save-status').textContent = prefix+'：'+new Date(updated).toLocaleTimeString('ja-JP'); }
   async function saveBrowser(force=false) {
     if (!loaded || romLoading || !romKey || (!autoSave && !force)) return;
@@ -339,11 +266,7 @@
     if (!n) { if (force) $('browser-save-status').textContent = 'このゲームのセーブデータはまだありません。'; return; }
     const pointer = m._web_save_data(), bytes = m.HEAPU8.slice(pointer,pointer+n).buffer, updated = Date.now(), filename = name;
     try {
-      const db = await database();
-      await new Promise((resolve,reject) => {
-        const tx = db.transaction('saves','readwrite'); tx.objectStore('saves').put({bytes,updated,filename},key);
-        tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);
-      });
+      await localSaves.write(key,{bytes,updated,filename});
       if (romKey === key) browserSaveLabel('ブラウザに保存しました',updated);
     } catch (_) { if (romKey === key) $('browser-save-status').textContent = '保存できませんでした。ファイルに書き出してください。'; }
   }
@@ -355,13 +278,30 @@
     const key = romKey; autoSave = false; $('auto-save').checked = false;
     try { localStorage.setItem('mgba-auto-save','false'); } catch (_) {}
     try {
-      const db = await database();
-      await new Promise((resolve,reject) => { const tx = db.transaction('saves','readwrite');tx.objectStore('saves').delete(key);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error); });
+      await localSaves.remove(key);
       $('browser-save-status').textContent = 'ブラウザ保存を削除しました。自動保存はオフにしました。';
     } catch (_) { $('browser-save-status').textContent = '削除できませんでした。'; }
   };
   setInterval(() => { if (!paused && !document.hidden) saveBrowser().catch(()=>{}); },10000);
   addEventListener('pagehide', () => saveBrowser().catch(()=>{}));
+  function updateSound() {
+    $('volume').value = volume; $('volume-value').value = Math.round(volume*100)+'%'; $('mute').checked = muted;
+    if (audioGain) audioGain.gain.setTargetAtTime(muted ? 0 : volume,audioContext.currentTime,.01);
+    try { localStorage.setItem('mgba-sound',JSON.stringify({volume,muted})); } catch (_) {}
+  }
+  $('volume').oninput = () => { volume = +$('volume').value; updateSound(); };
+  $('mute').onchange = () => { muted = $('mute').checked; updateSound(); };
+  updateSound();
+  $('screenshot-save').onclick = () => {
+    if (!loaded) return;
+    const filename = name.replace(/\.[^.]+$/,'')+'.png';
+    canvas.toBlob(blob => {
+      if (!blob) return;
+      const a = document.createElement('a'), url = URL.createObjectURL(blob);
+      a.href = url; a.download = filename; a.click();
+      setTimeout(()=>URL.revokeObjectURL(url),60000);
+    },'image/png');
+  };
   function playAudio() {
     const n = m._web_audio_read();
     if (!n || !audioContext || audioContext.state !== 'running') return;
@@ -376,11 +316,11 @@
         channel[i] = ((1-t)*m.HEAP16[p+j*2+c] + t*m.HEAP16[p+Math.min(j+1,n-1)*2+c]) / 32768;
       }
     }
-    const source = audioContext.createBufferSource(); source.buffer = buffer; source.connect(audioContext.destination);
+    const source = audioContext.createBufferSource(); source.buffer = buffer; source.connect(audioGain);
     nextAudio = Math.max(nextAudio, audioContext.currentTime + .025); source.start(nextAudio); nextAudio += count/outputRate;
   }
   function tick(now) {
-    pollController();
+    controller.poll();
     if (loaded && !paused) {
       const step = 1000/m._web_fps(); if (!clock) clock = now;
       let frames = 0;

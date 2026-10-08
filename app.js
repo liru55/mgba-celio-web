@@ -15,17 +15,34 @@
   let m;
   try { m = await createMGBA(); } catch (e) { status.textContent = `読み込み失敗: ${e.message}`; return; }
   const canvas = $('screen'), ctx = canvas.getContext('2d');
+  const screenEffects = createScreenEffects(canvas);
   let loaded = false, paused = false, keys = 0, image, pixelRows = [], pixelHeap, cheats = [], name = 'game', clock = 0, nextAudio = 0, audioContext, audioGain;
+  const audioSources = new Set();
   let volume = 1, muted = false;
   try { const sound = JSON.parse(localStorage.getItem('mgba-sound')); if (sound) { volume = Math.max(0,Math.min(1,Number(sound.volume) || 0)); muted = !!sound.muted; } } catch (_) {}
   let romKey = '', romLoading = false, loadSerial = 0, autoSave = true;
   try { autoSave = localStorage.getItem('mgba-auto-save') !== 'false'; } catch (_) {}
+  let speed = 1;
+  try { const saved = Number(localStorage.getItem('mgba-speed')); if ([1,1.5,2,3,4].includes(saved)) speed = saved; } catch (_) {}
+  let fastSpeed = speed !== 1 ? speed : 2;
+  try { const saved = Number(localStorage.getItem('mgba-fast-speed')); if ([1.5,2,3,4].includes(saved)) fastSpeed = saved; } catch (_) {}
+  function updateSpeedButton() { $('speed-toggle').textContent = speed === 1 ? '倍速 OFF' : `倍速 ${speed}×`; }
+  updateSpeedButton();
+  $('game-speed').value = speed;
+  $('game-speed').onchange = () => {
+    speed = Number($('game-speed').value); clock = 0; nextAudio = 0;
+    try { localStorage.setItem('mgba-speed',speed); } catch (_) {}
+    for (const source of audioSources) { try { source.stop(); } catch (_) {} } audioSources.clear();
+    if (speed !== 1) { fastSpeed = speed; try { localStorage.setItem('mgba-fast-speed',fastSpeed); } catch (_) {} }
+    updateSpeedButton(); updateSound();
+  };
+  $('speed-toggle').onclick = () => { $('game-speed').value = speed === 1 ? fastSpeed : 1; $('game-speed').onchange(); };
   let focused = true;
   let padKeys = 0, menuOpen = false, resumeAfterMenu = false;
-  const held = new Set(), touches = new Map();
+  const held = new Set(), touches = new Map(), dpadPointers = new Set();
   const mapping = {KeyZ:0,KeyX:1,ShiftLeft:2,ShiftRight:2,Enter:3,ArrowRight:4,ArrowLeft:5,ArrowUp:6,ArrowDown:7,KeyS:8,KeyA:9};
-  function updateKeys() { keys = padKeys; for (const code of held) keys |= 1 << mapping[code]; for (const bit of touches.values()) keys |= 1 << bit; }
-  function release() { document.querySelectorAll('.pressed').forEach(b => b.classList.remove('pressed')); held.clear(); touches.clear(); updateKeys(); clock = 0; nextAudio = 0; }
+  function updateKeys() { keys = padKeys; for (const code of held) keys |= 1 << mapping[code]; for (const mask of touches.values()) keys |= mask; }
+  function release() { document.querySelectorAll('.pressed').forEach(b => b.classList.remove('pressed')); held.clear(); touches.clear(); dpadPointers.clear(); updateKeys(); clock = 0; nextAudio = 0; }
   async function enableAudio() {
     audioContext ||= new (window.AudioContext || window.webkitAudioContext)();
     if (!audioGain) { audioGain = audioContext.createGain(); audioGain.connect(audioContext.destination); audioGain.gain.value = muted ? 0 : volume; }
@@ -36,11 +53,12 @@
     if (!p) throw new Error('メモリが足りません');
     try { m.HEAPU8.set(bytes, p); return call(p, bytes.length); } finally { m._free(p); }
   }
+  function updatePauseBanner() { $('pause-banner').hidden = !loaded || !paused || menuOpen || editing || romLoading; }
   function togglePause() {
     if (!loaded) return;
     paused = !paused; release();
     $('pause').textContent = paused ? '再開' : '一時停止';
-    status.textContent = paused ? '一時停止中' : name;
+    status.textContent = paused ? '一時停止中' : name; updatePauseBanner();
     if (!paused) enableAudio().catch(() => {});
   }
   $('welcome-open').disabled = false; $('welcome-open').onclick = () => $('open').click();
@@ -48,7 +66,7 @@
   $('open').onclick = () => { enableAudio().catch(() => {}); $('rom').click(); };
   $('rom').onchange = async () => {
     const file = $('rom').files[0]; if (!file) return;
-    paused = true; release(); romLoading = true; const serial = ++loadSerial;
+    paused = true; release(); romLoading = true; quickState = null; $('quick-state-save').disabled = $('quick-state-load').disabled = true; const serial = ++loadSerial;
     status.textContent = 'ROMを読み込み中…';
     try {
       if (file.size > 64 * 1024 * 1024) throw new Error('ROMは64MB以下を選んでください');
@@ -73,11 +91,14 @@
           } else $('browser-save-status').textContent = 'このROMの保存はまだありません。';
         } catch (_) { $('browser-save-status').textContent = 'ブラウザ保存を利用できません。ファイルに書き出してください。'; }
       }
+      try { quickState = await localSaves.read('state:'+romKey); } catch (_) {}
+      if (serial !== loadSerial) return;
       paused = false; $('pause').textContent = '一時停止'; status.textContent = name;
     } catch (e) { status.textContent = e.message; }
-    romLoading = false;
+    romLoading = false; updatePauseBanner();
     for (const id of ['pause','reset','export','import']) $(id).disabled = !loaded;
     $('screenshot-save').disabled = !loaded; $('quick-save').disabled = !loaded; $('cheat-add').disabled = !loaded;
+    $('quick-state-save').disabled = !loaded; $('quick-state-load').disabled = !loaded || !quickState;
     $('browser-save-now').disabled = !loaded; $('browser-save-delete').disabled = !loaded;
     $('rom').value = '';
   };
@@ -147,14 +168,14 @@
   function openSettings(tab) {
     if (tab) selectTab(tab);
     if (!menuOpen) { resumeAfterMenu = loaded && !paused; if (resumeAfterMenu) togglePause(); }
-    menuOpen = true; padKeys = 0; release(); $('settings').showModal();
+    menuOpen = true; updatePauseBanner(); padKeys = 0; release(); $('settings').showModal();
   }
   $('settings-open').onclick = () => openSettings();
   $('settings-close').onclick = () => $('settings').close();
   $('settings').addEventListener('close', () => {
     menuOpen = false; release();
     if (resumeAfterMenu && loaded && paused && !editing && !document.hidden) togglePause();
-    resumeAfterMenu = false;
+    resumeAfterMenu = false; updatePauseBanner();
   });
   $('go-display').onclick = () => selectTab('display');
   addEventListener('keydown', e => {
@@ -174,7 +195,7 @@
   addEventListener('focus', () => { focused = true; });
   document.addEventListener('visibilitychange', () => { if (document.hidden) saveBrowser().catch(()=>{}); release(); if (document.hidden && loaded && !paused) togglePause(); });
   for (const b of document.querySelectorAll('[data-key]')) {
-    b.onpointerdown = e => { e.preventDefault(); b.setPointerCapture(e.pointerId); b.classList.add('pressed'); touches.set(e.pointerId, +b.dataset.key); updateKeys(); enableAudio().catch(() => {}); };
+    b.onpointerdown = e => { if (b.closest('.dpad') && linkedDpad) return; e.preventDefault(); b.setPointerCapture(e.pointerId); b.classList.add('pressed'); touches.set(e.pointerId, 1 << +b.dataset.key); updateKeys(); enableAudio().catch(() => {}); };
     const end = e => { b.classList.remove('pressed'); touches.delete(e.pointerId); updateKeys(); };
     b.onpointerup = end; b.onpointercancel = end; b.onlostpointercapture = end;
   }
@@ -226,6 +247,39 @@
     });
     for (const type of ['pointerup','pointercancel','lostpointercapture']) el.addEventListener(type,e => { if (drag && drag.id === e.pointerId) { drag = null; storeLayout(); } });
   }
+  const dpad = play.querySelector('.dpad');
+  let linkedDpad = true;
+  try { linkedDpad = localStorage.getItem('mgba-dpad-linked') !== 'false'; } catch (_) {}
+  function applyDpad() {
+    release(); dpad.classList.toggle('linked', linkedDpad); $('dpad-linked').checked = linkedDpad;
+    try { localStorage.setItem('mgba-dpad-linked', linkedDpad); } catch (_) {}
+  }
+  $('dpad-linked').onchange = () => { linkedDpad = $('dpad-linked').checked; applyDpad(); };
+  function slideDpad(e) {
+    const r = dpad.getBoundingClientRect(), x = (e.clientX-r.left-r.width/2)/(r.width/2), y = (e.clientY-r.top-r.height/2)/(r.height/2);
+    let mask = 0;
+    if (Math.abs(x) <= 1.25 && Math.abs(y) <= 1.25 && Math.max(Math.abs(x),Math.abs(y)) > .18) {
+      if (Math.abs(x) > Math.abs(y)*.55) mask |= 1 << (x > 0 ? 4 : 5);
+      if (Math.abs(y) > Math.abs(x)*.55) mask |= 1 << (y > 0 ? 7 : 6);
+    }
+    touches.set(e.pointerId,mask); updateKeys(); paintDpad();
+  }
+  function paintDpad() {
+    let mask = 0; for (const id of dpadPointers) mask |= touches.get(id) || 0;
+    for (const b of dpad.querySelectorAll('[data-key]')) b.classList.toggle('pressed',!!(mask & (1 << +b.dataset.key)));
+  }
+  dpad.addEventListener('pointerdown', e => {
+    if (!linkedDpad || editing) return;
+    e.preventDefault(); dpad.setPointerCapture(e.pointerId); dpadPointers.add(e.pointerId); slideDpad(e); enableAudio().catch(() => {});
+  });
+  dpad.addEventListener('pointermove', e => { if (!dpadPointers.has(e.pointerId)) return; e.preventDefault(); slideDpad(e); });
+  for (const type of ['pointerup','pointercancel','lostpointercapture']) dpad.addEventListener(type,e => {
+    if (!dpadPointers.delete(e.pointerId)) return;
+    touches.delete(e.pointerId); updateKeys(); paintDpad();
+  });
+  play.addEventListener('contextmenu', e => e.preventDefault());
+  play.addEventListener('selectstart', e => e.preventDefault());
+  applyDpad();
   applyLayout();
   matchMedia('(orientation:landscape)').addEventListener('change', () => { drag = null; release(); applyLayout(); });
   const controller = createController({$,play,release,
@@ -241,6 +295,13 @@
     if (!document.body.classList.contains('clean-view')) return;
     e.preventDefault(); e.stopImmediatePropagation();
     document.body.classList.remove('clean-view'); release();
+  },true);
+  $('pause-banner').onclick = () => { if (loaded && paused && !menuOpen && !editing) togglePause(); };
+  play.addEventListener('pointerdown', e => {
+    if (!loaded || !paused || menuOpen || editing || romLoading) return;
+    if (e.target === canvas || e.target === play || e.target.id === 'effect-screen') {
+      e.preventDefault(); e.stopImmediatePropagation(); togglePause();
+    }
   },true);
   addEventListener('keydown', e => { if (document.body.classList.contains('clean-view') && e.code==='Escape') document.body.classList.remove('clean-view'); });
   function configureCheatFormats() {
@@ -269,6 +330,37 @@
     cheats.push({name:title,enabled:true}); renderCheats(); $('cheat-code').value = ''; $('cheat-name').value = ''; $('cheat-status').textContent = '追加しました。チェックで有効・無効を切り替えられます。';
   };
   const localSaves = new LocalSaveStore();
+  let quickState = null, quickBusy = false, quickMessageTimer;
+  let showQuick = true;
+  try { showQuick = localStorage.getItem('mgba-quick-controls') !== 'false'; } catch (_) {}
+  function applyQuickControls() { $('show-quick').checked = showQuick; $('quick-actions').hidden = !showQuick; }
+  $('show-quick').onchange = () => { showQuick = $('show-quick').checked; applyQuickControls(); try { localStorage.setItem('mgba-quick-controls',showQuick); } catch (_) {} };
+  applyQuickControls();
+  function quickMessage(text) { $('quick-message').textContent = text; $('quick-message').hidden = false; clearTimeout(quickMessageTimer); quickMessageTimer = setTimeout(() => $('quick-message').hidden = true,4000); }
+  $('quick-state-save').onclick = async () => {
+    if (!loaded || romLoading || quickBusy) return;
+    quickBusy = true; const key = romKey, serial = loadSerial;
+    try {
+      const size = m._web_state_export(); if (!size) throw new Error('途中の状態を保存できませんでした');
+      const pointer = m._web_state_data();
+      const saved = {bytes:m.HEAPU8.slice(pointer,pointer+size).buffer,picture:image.data.slice().buffer,updated:Date.now()};
+      quickState = saved; $('quick-state-load').disabled = false;
+      try { await localSaves.write('state:'+key,saved); if (serial === loadSerial) quickMessage('クイック保存しました（このROMに1つ）'); }
+      catch (_) { if (serial === loadSerial) quickMessage('今回は保存しました。ブラウザへは保存できませんでした。'); }
+    } catch (error) { quickMessage(error.message); }
+    finally { quickBusy = false; }
+  };
+  $('quick-state-load').onclick = () => {
+    if (!loaded || romLoading || quickBusy || !quickState) return;
+    try {
+      if (!upload(new Uint8Array(quickState.bytes),(p,n)=>m._web_state_import(p,n))) throw new Error('クイック保存を読み込めませんでした');
+      release(); for (const source of audioSources) { try { source.stop(); } catch (_) {} } audioSources.clear();
+      m._web_audio_read();
+      if (quickState.picture?.byteLength === image.data.byteLength) { image.data.set(new Uint8Array(quickState.picture)); ctx.putImageData(image,0,0); screenEffects.render(image); }
+      quickMessage('クイック保存の時点に戻りました');
+    } catch (error) { quickMessage(error.message); }
+  };
+
   const readBrowserSave = key => localSaves.read(key);
   function browserSaveLabel(prefix,updated) { $('browser-save-status').textContent = prefix+'：'+new Date(updated).toLocaleTimeString('ja-JP'); }
   async function saveBrowser(force=false) {
@@ -315,7 +407,7 @@
   };
   function playAudio() {
     const n = m._web_audio_read();
-    if (!n || !audioContext || audioContext.state !== 'running') return;
+    if (!n || muted || volume === 0 || !audioContext || audioContext.state !== 'running') return;
     const rate = m._web_audio_rate(), p = m._web_audio() >> 1;
     if (nextAudio > audioContext.currentTime + .2) return;
     const outputRate = audioContext.sampleRate, count = Math.max(1, Math.round(n * outputRate / rate));
@@ -327,16 +419,17 @@
         channel[i] = ((1-t)*m.HEAP16[p+j*2+c] + t*m.HEAP16[p+Math.min(j+1,n-1)*2+c]) / 32768;
       }
     }
-    const source = audioContext.createBufferSource(); source.buffer = buffer; source.connect(audioGain);
-    nextAudio = Math.max(nextAudio, audioContext.currentTime + .025); source.start(nextAudio); nextAudio += count/outputRate;
+    const source = audioContext.createBufferSource(); source.buffer = buffer; source.playbackRate.value = speed; source.connect(audioGain);
+    audioSources.add(source); source.onended = () => audioSources.delete(source);
+    nextAudio = Math.max(nextAudio, audioContext.currentTime + .025); source.start(nextAudio); nextAudio += count/outputRate/speed;
   }
   function tick(now) {
     controller.poll();
     if (loaded && !paused) {
-      const step = 1000/m._web_fps(); if (!clock) clock = now;
+      const step = 1000/(m._web_fps()*speed), limit = Math.ceil(4*speed); if (!clock) clock = now;
       let frames = 0;
-      while (now >= clock && frames++ < 4) { m._web_frame(keys); playAudio(); clock += step; }
-      if (now-clock > step*4) clock = now;
+      while (now >= clock && frames++ < limit) { m._web_frame(keys); playAudio(); clock += step; }
+      if (now-clock > step*limit) clock = now;
       if (frames) {
         if (pixelHeap !== m.HEAPU8.buffer) {
           pixelHeap = m.HEAPU8.buffer;
@@ -346,6 +439,7 @@
         for (let y=0; y<canvas.height; ++y) image.data.set(pixelRows[y],y*canvas.width*4);
         for (let i=3; i<image.data.length; i+=4) image.data[i] = 255;
         ctx.putImageData(image,0,0);
+        screenEffects.render(image);
       }
     }
     requestAnimationFrame(tick);

@@ -754,7 +754,7 @@ textarea{
 .dpad.linked button { border-radius:0; border:0; background:transparent; }
 .dpad.linked button.pressed { background:#526eaa; }
 
-#quick-actions { position:absolute; top:10px; right:10px; display:flex; gap:5px; z-index:2; max-width:calc(100% - 20px); }
+#quick-actions { position:absolute; top:10px; right:10px; display:flex; gap:5px; z-index:4; max-width:calc(100% - 20px); }
 #quick-actions button { padding:8px 10px; min-height:44px; font-size:12px; opacity:.8; touch-action:manipulation; }
 .play.immersive #quick-actions { top:max(62px,calc(env(safe-area-inset-top) + 52px)); }
 #quick-actions[hidden], #quick-message[hidden] { display:none!important; }

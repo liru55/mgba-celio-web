@@ -1113,7 +1113,7 @@ body.link-mode #quick-actions,body.link-mode #pause-banner {
     min-height:0
   }
   .screen-viewport {
-    padding:8px 158px 36px
+    padding:8px 158px 72px
   }
   .gamepad {
     position:absolute;
@@ -1206,7 +1206,8 @@ body.link-mode #quick-actions,body.link-mode #pause-banner {
     display:none
   }
   .play.no-touch:not(.editing) .screen-viewport,.play.touch-hidden:not(.editing) .screen-viewport {
-    padding-inline:16px
+    padding-inline:16px;
+    padding-bottom:8px
   }
 }
 @media(prefers-reduced-motion:reduce) {

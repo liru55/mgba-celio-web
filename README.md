@@ -1,6 +1,6 @@
 # mGBA celio Web
 
-iPhone / iPad向けのWebAssembly版です。64MBのPokemonStart ROMとスマホ用タッチ操作に対応しています。
+iPhone / iPad向けのWebAssembly版です。スマホ用タッチ操作・コントローラー・セーブのブラウザ保存に対応しています。
 
 **起動:** https://liru55.github.io/mgba-celio-web/
 

@@ -970,10 +970,16 @@ body.link-mode #quick-actions,body.link-mode #pause-banner {
 .clean-view #quick-actions,.clean-view #quick-message,.clean-view #pause-banner {
   display:none!important
 }
-.play,.play * {
+/* iOS Safari selects the nearest selectable text on a long press, even from a button that is not selectable itself. */
+body,body *,.play,.play * {
   user-select:none;
   -webkit-user-select:none;
   -webkit-touch-callout:none
+}
+dialog,dialog *,input,textarea {
+  user-select:text;
+  -webkit-user-select:text;
+  -webkit-touch-callout:default
 }
 @media(max-width:900px) {
   body {

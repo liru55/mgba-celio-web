@@ -331,6 +331,10 @@
   document.addEventListener('touchmove', e => {
     if (editing && play.contains(e.target) && e.cancelable) e.preventDefault();
   }, {passive:false,capture:true});
+  // A held game button must not start the long-press text selection / callout (the pointer events still fire).
+  document.addEventListener('touchstart', e => {
+    if (e.cancelable && e.target.closest?.('.gamepad [data-key],.dpad,.delta-hit')) e.preventDefault();
+  }, {passive:false,capture:true});
   const editBar=$('edit-bar'), editHandle=$('edit-handle');
   let editorPositions={}, editorDrag;
   try { editorPositions=JSON.parse(localStorage.getItem('mgba-editor-position'))||{}; } catch (_) {}
@@ -419,7 +423,8 @@
   $('pause-banner').onclick = () => { if (loaded && paused && !menuOpen && !editing) togglePause(); };
   play.addEventListener('pointerdown', e => {
     if (!loaded || !paused || menuOpen || editing || romLoading) return;
-    if (e.target === canvas || e.target === play || e.target.id === 'effect-screen') {
+    // Anywhere on the play area that is not a control: the margins around the screen and the skin artwork count too.
+    if (!e.target.closest?.('button,a,input,select,textarea,label,summary,dialog,.emulator-toolbar,#quick-actions,#link-hud,#edit-bar,#welcome')) {
       e.preventDefault(); e.stopImmediatePropagation(); togglePause();
     }
   },true);

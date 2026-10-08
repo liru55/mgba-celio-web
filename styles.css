@@ -1248,3 +1248,17 @@ body.link-mode #quick-actions,body.link-mode #pause-banner {
 
 #edit-handle { touch-action:none; cursor:grab; padding:8px; user-select:none; -webkit-user-select:none; }
 #edit-handle:active { cursor:grabbing; }
+
+/* L and R are individual layout targets, including migrated shoulder-group positions. */
+.gamepad .shoulders { display:contents; }
+.gamepad .shoulder-l,.gamepad .shoulder-r { position:absolute; top:8px; pointer-events:auto; }
+.gamepad .shoulder-l { left:22px; width:calc(72px * var(--left-size,1)); min-height:max(44px,calc(44px * var(--left-size,1))); }
+.gamepad .shoulder-r { left:auto; right:22px; width:calc(72px * var(--right-size,1)); min-height:max(44px,calc(44px * var(--right-size,1))); }
+.play.overlay .shoulder-l,.play.overlay .shoulder-r { top:15%; right:auto; transform:translate(-50%,-50%) scale(var(--pad-scale,.75)); opacity:var(--pad-opacity,.8); }
+.play.overlay .shoulder-l { left:15%; }
+.play.overlay .shoulder-r { left:85%; }
+.play.editing .shoulder-l,.play.editing .shoulder-r { outline:2px dashed #e6c877; outline-offset:4px; opacity:1; cursor:move; }
+
+
+.link-buttons > label { grid-column:1 / -1; }
+#link-usb-panel small { display:block; margin-top:12px; }

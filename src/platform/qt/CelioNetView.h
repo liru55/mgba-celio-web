@@ -9,7 +9,10 @@
 #include <QTimer>
 
 #include <memory>
+#include <string>
 
+class QCheckBox;
+class QComboBox;
 class QLabel;
 class QLineEdit;
 class QPushButton;
@@ -34,8 +37,13 @@ private slots:
 	void disconnectLink();
 	void copyRoom();
 	void refresh();
+	void refreshPorts();
+	void direct();
 
 private:
+	static std::string usbPortFromEnv();
+	std::string selectedPort() const;
+
 	Window* m_window;
 	QLabel* m_status;
 	QLabel* m_room;
@@ -44,6 +52,10 @@ private:
 	QPushButton* m_join;
 	QPushButton* m_disconnect;
 	QPushButton* m_copy;
+	QComboBox* m_ports;
+	QPushButton* m_refreshPorts;
+	QPushButton* m_direct;
+	QCheckBox* m_useUsb;
 	QTimer m_timer;
 };
 

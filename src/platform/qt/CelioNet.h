@@ -6,6 +6,15 @@
  * The device logic is a straight port of celio_device.lua (Celio-mGBA-Link 0.2) so that
  * both sides behave the same as the script + page combination.
  *
+ * A real GBA can take part through a GBLink / Celio USB adapter (RP2040, CDC-ACM serial,
+ * "GB" framed packets as in Celio-Client's LinkDeviceService):
+ *  - Direct: this emulator and the real GBA, no server. The relay's session logic
+ *    (Celio-Server session.ts) runs here between the two devices.
+ *  - NetUsb: the adapter takes the place of the emulated device in a relay room
+ *    (what the Celio web page's online link does).
+ *  - FakeAdapter (tests): the emulated device answers on a TCP port the way the adapter
+ *    firmware does, so Direct / NetUsb can be tried without the hardware.
+ *
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -31,9 +40,24 @@ namespace QGBA {
 
 class CoreController;
 class CelioWebSocket;
+class CelioPort;
 
 class CelioNet {
 public:
+	enum class Kind {
+		Net,
+		NetUsb,
+		Direct,
+		FakeAdapter,
+	};
+
+	struct SerialPortInfo {
+		std::string name; // COM5
+		std::string description;
+		bool adapter; // USB VID 0x2FE3 (GBLink / Celio)
+	};
+	static std::vector<SerialPortInfo> listSerialPorts();
+
 	enum class State {
 		Idle,
 		Connecting,
@@ -49,12 +73,17 @@ public:
 		std::string room;
 		std::string message;
 		bool active;
+		Kind kind;
 	};
 
 	static CelioNet* instance();
 
 	// GUI thread. room is empty to create a new room.
 	bool start(std::shared_ptr<CoreController> controller, const std::string& room);
+	// port: "COM5", or "tcp:host:port" (a FakeAdapter, for tests)
+	bool startDirect(std::shared_ptr<CoreController> controller, const std::string& port);
+	bool startNetUsb(const std::string& port, const std::string& room);
+	bool startFakeAdapter(std::shared_ptr<CoreController> controller, int listenPort);
 	// touchCore = false when the core is going away (CoreController::stopping)
 	void stop(bool touchCore = true);
 	Snapshot snapshot();
@@ -79,6 +108,8 @@ private:
 		std::vector<uint16_t> data;
 	};
 
+	bool startCommon(Kind kind, std::shared_ptr<CoreController> controller, const std::string& room, const std::string& port, int listenPort);
+
 	// core side
 	void attachCore();
 	void detachCore();
@@ -98,6 +129,19 @@ private:
 	void startLinkMode();
 	void pushIncoming(Incoming in);
 	void deliverData(long sequence, std::vector<uint16_t> data);
+	void queueOutgoing(Outgoing item);
+	void noteStatus(uint16_t status);
+
+	// USB adapter side
+	void portThread();
+	void handleFrame(uint8_t channel, const std::vector<uint8_t>& payload);
+	bool portSend(uint8_t channel, const uint8_t* data, size_t size);
+	bool portCommand(uint16_t command);
+	bool portData(const std::vector<uint16_t>& data);
+	void portStatus(uint16_t status);
+	// Direct: Celio-Server session.ts between the emulated device (0) and the adapter (1)
+	void sessionStatus(int who, uint16_t status);
+	void sessionCommand(int who, uint16_t command);
 
 	void setState(State state, const std::string& message);
 	void setMessage(const std::string& message);
@@ -146,6 +190,17 @@ private:
 	long m_nextAck = 0;
 	long m_sessionAck = -1;
 	std::string m_logPath;
+
+	Kind m_kind = Kind::Net;
+	std::string m_portName;
+	int m_listenPort = 0;
+	std::unique_ptr<CelioPort> m_port;
+	std::thread m_portThread;
+	std::mutex m_sessionLock;
+	uint16_t m_sessionStatus[2] = {};
+	bool m_masterSelected = false;
+	long long m_closeAt = 0;
+	std::atomic<bool> m_firmwareSeen{false};
 };
 
 }

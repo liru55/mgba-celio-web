@@ -18,11 +18,16 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <algorithm>
+#include <cctype>
 #include <random>
 
 #define WIN32_LEAN_AND_MEAN
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include <windows.h>
 #include <winhttp.h>
+#include <setupapi.h>
 
 using namespace QGBA;
 
@@ -46,6 +51,7 @@ enum LinkStatus : uint16_t {
 enum CommandType : uint16_t {
 	CmdSetMode = 0x00,
 	CmdCancel = 0x01,
+	CmdGetFirmwareInfo = 0x0F,
 	CmdSetModeMaster = 0x10,
 	CmdSetModeSlave = 0x11,
 	CmdStartHandshake = 0x12,
@@ -56,6 +62,15 @@ enum CommandType : uint16_t {
 enum class Transive { Handshake, Crc, Command };
 enum class Handshake { Waiting, Listening, WaitingToRespond, Responding };
 enum class Mode { Master, Slave };
+
+// Celio-Firmware SerialLayer: | 'G' 'B' | channel | len:2 LE | payload |
+const uint8_t SYNC_0 = 0x47;
+const uint8_t SYNC_1 = 0x42;
+const uint8_t CH_CMD = 0x00;
+const uint8_t CH_DATA = 0x01;
+const uint8_t CH_STATUS = 0x02;
+const size_t MAX_PAYLOAD = 64;
+const uint8_t LINK_MODE_ONLINE = 0x01; // LinkMode.onlineLink
 
 const uint32_t IE_REG = 0x200;
 const uint32_t IF_REG = 0x202;
@@ -259,6 +274,237 @@ private:
 	std::atomic<HINTERNET> m_ws{nullptr};
 };
 
+// Byte pipe to the USB adapter: a COM port (CDC-ACM), or TCP for tests.
+// One reader thread; writes are serialised here. close() makes a blocked read return.
+class CelioPort {
+public:
+	// The reader thread must be joined first
+	~CelioPort() {
+		close();
+		if (m_sock != INVALID_SOCKET) {
+			closesocket(m_sock);
+		}
+		if (m_com != INVALID_HANDLE_VALUE) {
+			CloseHandle(m_com);
+		}
+		if (m_readEvent) {
+			CloseHandle(m_readEvent);
+		}
+		if (m_writeEvent) {
+			CloseHandle(m_writeEvent);
+		}
+	}
+
+	// "COM5" | "tcp:host:port" | "listen:port" (accepts one connection on 127.0.0.1)
+	bool open(const std::string& spec, std::string& error) {
+		if (spec.compare(0, 4, "tcp:") == 0) {
+			std::string rest = spec.substr(4);
+			size_t colon = rest.rfind(':');
+			if (colon == std::string::npos) {
+				error = "tcp:host:port";
+				return false;
+			}
+			return openTcp(rest.substr(0, colon), rest.substr(colon + 1), error);
+		}
+		if (spec.compare(0, 7, "listen:") == 0) {
+			return openListen(atoi(spec.c_str() + 7), error);
+		}
+		return openCom(spec, error);
+	}
+
+	// Blocks until data arrives. Returns false when the port is gone or closed.
+	bool read(std::vector<uint8_t>& out) {
+		out.clear();
+		uint8_t buffer[256];
+		while (!m_closed) {
+			if (m_listen != INVALID_SOCKET && m_sock == INVALID_SOCKET) {
+				SOCKET s = accept(m_listen, nullptr, nullptr);
+				if (s == INVALID_SOCKET) {
+					return false;
+				}
+				int one = 1;
+				setsockopt(s, IPPROTO_TCP, TCP_NODELAY, (const char*) &one, sizeof(one));
+				m_sock = s;
+				continue;
+			}
+			if (m_sock != INVALID_SOCKET) {
+				int n = recv(m_sock, (char*) buffer, sizeof(buffer), 0);
+				if (n <= 0) {
+					return false;
+				}
+				out.assign(buffer, buffer + n);
+				return true;
+			}
+			OVERLAPPED ov{};
+			ov.hEvent = m_readEvent;
+			DWORD got = 0;
+			if (!ReadFile(m_com, buffer, sizeof(buffer), &got, &ov)) {
+				if (GetLastError() != ERROR_IO_PENDING || !GetOverlappedResult(m_com, &ov, &got, TRUE)) {
+					return false;
+				}
+			}
+			if (got) {
+				out.assign(buffer, buffer + got);
+				return true;
+			}
+			// read timeout with nothing received: go round again
+		}
+		return false;
+	}
+
+	bool write(const uint8_t* data, size_t size) {
+		std::lock_guard<std::mutex> lock(m_writeLock);
+		if (m_closed) {
+			return false;
+		}
+		if (m_sock != INVALID_SOCKET) {
+			size_t sent = 0;
+			while (sent < size) {
+				int n = send(m_sock, (const char*) data + sent, (int) (size - sent), 0);
+				if (n <= 0) {
+					return false;
+				}
+				sent += n;
+			}
+			return true;
+		}
+		if (m_com == INVALID_HANDLE_VALUE) {
+			return false;
+		}
+		OVERLAPPED ov{};
+		ov.hEvent = m_writeEvent;
+		DWORD done = 0;
+		if (!WriteFile(m_com, data, (DWORD) size, &done, &ov)) {
+			if (GetLastError() != ERROR_IO_PENDING || !GetOverlappedResult(m_com, &ov, &done, TRUE)) {
+				return false;
+			}
+		}
+		return done == size;
+	}
+
+	// Any thread: makes blocked reads and writes return. Handles are freed in the destructor.
+	void close() {
+		m_closed = true;
+		if (m_com != INVALID_HANDLE_VALUE) {
+			CancelIoEx(m_com, nullptr);
+		}
+		SOCKET s = m_sock;
+		if (s != INVALID_SOCKET) {
+			shutdown(s, SD_BOTH);
+		}
+		SOCKET l = m_listen.exchange(INVALID_SOCKET);
+		if (l != INVALID_SOCKET) {
+			closesocket(l);
+		}
+	}
+
+private:
+	bool openCom(const std::string& name, std::string& error) {
+		std::string path = "\\\\.\\" + name;
+		m_com = CreateFileA(path.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, nullptr);
+		if (m_com == INVALID_HANDLE_VALUE) {
+			error = name + " を ひらけません（" + std::to_string(GetLastError()) + "）";
+			return false;
+		}
+		SetupComm(m_com, 4096, 4096);
+		DCB dcb{};
+		dcb.DCBlength = sizeof(dcb);
+		if (GetCommState(m_com, &dcb)) {
+			// CDC-ACM ignores the line settings; DTR/RTS on as Web Serial does
+			dcb.BaudRate = 115200;
+			dcb.ByteSize = 8;
+			dcb.Parity = NOPARITY;
+			dcb.StopBits = ONESTOPBIT;
+			dcb.fBinary = TRUE;
+			dcb.fDtrControl = DTR_CONTROL_ENABLE;
+			dcb.fRtsControl = RTS_CONTROL_ENABLE;
+			dcb.fOutxCtsFlow = FALSE;
+			dcb.fOutxDsrFlow = FALSE;
+			dcb.fOutX = FALSE;
+			dcb.fInX = FALSE;
+			SetCommState(m_com, &dcb);
+		}
+		COMMTIMEOUTS timeouts{};
+		// Return as soon as anything arrives, or after 200 ms with nothing
+		timeouts.ReadIntervalTimeout = MAXDWORD;
+		timeouts.ReadTotalTimeoutMultiplier = MAXDWORD;
+		timeouts.ReadTotalTimeoutConstant = 200;
+		timeouts.WriteTotalTimeoutConstant = 2000;
+		SetCommTimeouts(m_com, &timeouts);
+		EscapeCommFunction(m_com, SETDTR);
+		EscapeCommFunction(m_com, SETRTS);
+		PurgeComm(m_com, PURGE_RXCLEAR | PURGE_TXCLEAR);
+		m_readEvent = CreateEvent(nullptr, TRUE, FALSE, nullptr);
+		m_writeEvent = CreateEvent(nullptr, TRUE, FALSE, nullptr);
+		return true;
+	}
+
+	bool startWinsock(std::string& error) {
+		WSADATA wsa;
+		if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
+			error = "WSAStartup";
+			return false;
+		}
+		return true;
+	}
+
+	bool openTcp(const std::string& host, const std::string& port, std::string& error) {
+		if (!startWinsock(error)) {
+			return false;
+		}
+		addrinfo hints{};
+		hints.ai_family = AF_INET;
+		hints.ai_socktype = SOCK_STREAM;
+		addrinfo* res = nullptr;
+		if (getaddrinfo(host.c_str(), port.c_str(), &hints, &res) != 0 || !res) {
+			error = "getaddrinfo " + host;
+			return false;
+		}
+		SOCKET s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+		if (s == INVALID_SOCKET || connect(s, res->ai_addr, (int) res->ai_addrlen) != 0) {
+			error = "tcp " + host + ":" + port + " に つながりません";
+			if (s != INVALID_SOCKET) {
+				closesocket(s);
+			}
+			freeaddrinfo(res);
+			return false;
+		}
+		freeaddrinfo(res);
+		int one = 1;
+		setsockopt(s, IPPROTO_TCP, TCP_NODELAY, (const char*) &one, sizeof(one));
+		m_sock = s;
+		return true;
+	}
+
+	bool openListen(int port, std::string& error) {
+		if (!startWinsock(error)) {
+			return false;
+		}
+		SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+		sockaddr_in addr{};
+		addr.sin_family = AF_INET;
+		addr.sin_port = htons((u_short) port);
+		addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+		if (s == INVALID_SOCKET || bind(s, (sockaddr*) &addr, sizeof(addr)) != 0 || listen(s, 1) != 0) {
+			error = "listen " + std::to_string(port);
+			if (s != INVALID_SOCKET) {
+				closesocket(s);
+			}
+			return false;
+		}
+		m_listen = s;
+		return true;
+	}
+
+	HANDLE m_com = INVALID_HANDLE_VALUE;
+	HANDLE m_readEvent = nullptr;
+	HANDLE m_writeEvent = nullptr;
+	std::atomic<SOCKET> m_sock{INVALID_SOCKET};
+	std::atomic<SOCKET> m_listen{INVALID_SOCKET};
+	std::atomic<bool> m_closed{false};
+	std::mutex m_writeLock;
+};
+
 // Port of celio_device.lua (state lives on the core thread only)
 struct CelioNet::Device {
 	Handshake handshake = Handshake::Waiting;
@@ -321,18 +567,42 @@ void CelioNet::setMessage(const std::string& message) {
 
 CelioNet::Snapshot CelioNet::snapshot() {
 	std::lock_guard<std::mutex> lock(m_stateLock);
-	return Snapshot{m_state, m_room, m_message, m_net.joinable()};
+	return Snapshot{m_state, m_room, m_message, m_net.joinable() || m_work.joinable(), m_kind};
 }
 
 bool CelioNet::start(std::shared_ptr<CoreController> controller, const std::string& room) {
+	return startCommon(Kind::Net, controller, room, std::string(), 0);
+}
+
+bool CelioNet::startDirect(std::shared_ptr<CoreController> controller, const std::string& port) {
+	return startCommon(Kind::Direct, controller, std::string(), port, 0);
+}
+
+bool CelioNet::startNetUsb(const std::string& port, const std::string& room) {
+	return startCommon(Kind::NetUsb, nullptr, room, port, 0);
+}
+
+bool CelioNet::startFakeAdapter(std::shared_ptr<CoreController> controller, int listenPort) {
+	return startCommon(Kind::FakeAdapter, controller, std::string(), std::string(), listenPort);
+}
+
+bool CelioNet::startCommon(Kind kind, std::shared_ptr<CoreController> controller, const std::string& room, const std::string& port, int listenPort) {
 	stop();
-	if (!controller || controller->platform() != mPLATFORM_GBA) {
+	bool needsCore = kind != Kind::NetUsb;
+	if (needsCore && (!controller || controller->platform() != mPLATFORM_GBA)) {
 		setState(State::Error, "ゲームを起動してから使ってください");
+		return false;
+	}
+	if ((kind == Kind::NetUsb || kind == Kind::Direct) && port.empty()) {
+		setState(State::Error, "USB の変換器が みつかりません");
 		return false;
 	}
 	const char* logPath = getenv("MGBA_CELIO_NET_LOG");
 	m_logPath = logPath ? logPath : "";
-	m_controller = controller;
+	m_kind = kind;
+	m_portName = port;
+	m_listenPort = listenPort;
+	m_controller = needsCore ? controller : nullptr;
 	m_joinRoom = room;
 	{
 		std::lock_guard<std::mutex> lock(m_stateLock);
@@ -351,14 +621,58 @@ bool CelioNet::start(std::shared_ptr<CoreController> controller, const std::stri
 	m_incoming.clear();
 	m_hasIncoming = false;
 	m_linkStartAt = 0;
+	m_closeAt = 0;
+	m_masterSelected = false;
+	m_sessionStatus[0] = m_sessionStatus[1] = 0;
+	m_firmwareSeen = false;
 	m_clientId = makeUuid();
 
-	{
+	if (kind != Kind::Net) {
+		std::string spec = kind == Kind::FakeAdapter ? "listen:" + std::to_string(listenPort) : port;
+		std::unique_ptr<CelioPort> p(new CelioPort);
+		std::string error;
+		if (!p->open(spec, error)) {
+			log("port open failed: " + error);
+			m_controller.reset();
+			setState(State::Error, error);
+			return false;
+		}
+		m_port = std::move(p);
+		log("port " + spec);
+	}
+	if (m_controller) {
 		CoreController::Interrupter interrupter(m_controller);
 		attachCore();
 	}
-	setState(State::Connecting, "サーバーに つないでいます…");
-	m_net = std::thread(&CelioNet::netThread, this);
+	if (m_port) {
+		m_portThread = std::thread(&CelioNet::portThread, this);
+	}
+	switch (kind) {
+	case Kind::Net:
+	case Kind::NetUsb:
+		if (m_port) {
+			portCommand(CmdGetFirmwareInfo);
+		}
+		setState(State::Connecting, "サーバーに つないでいます…");
+		m_net = std::thread(&CelioNet::netThread, this);
+		break;
+	case Kind::Direct:
+		portCommand(CmdGetFirmwareInfo);
+		m_deviceOn = true;
+		setState(State::Linking, "実機と つないでいます（" + port + "）…\n実機と このゲームの 両方で ポケモンセンター 2 階の受付へ");
+		{
+			// LinkDeviceUtils.tryEnableLinkMode on both devices: Cancel, wait 500 ms, SetMode
+			pushIncoming(Incoming{true, CmdCancel, {}});
+			portCommand(CmdCancel);
+			std::lock_guard<std::mutex> lock(m_outLock);
+			m_linkStartAt = nowMs() + 500;
+		}
+		break;
+	case Kind::FakeAdapter:
+		m_deviceOn = true;
+		setState(State::Linking, "変換器の かわりとして まっています（tcp " + std::to_string(listenPort) + "）");
+		break;
+	}
 	m_work = std::thread(&CelioNet::workThread, this);
 	return true;
 }
@@ -384,6 +698,17 @@ void CelioNet::stop(bool touchCore) {
 	{
 		std::lock_guard<std::mutex> lock(m_wsLock);
 		m_ws.reset();
+	}
+	if (m_port) {
+		if (m_kind == Kind::Direct || m_kind == Kind::NetUsb) {
+			// LinkExchangeSession.destroy
+			portCommand(CmdCancel);
+		}
+		m_port->close();
+		if (m_portThread.joinable()) {
+			m_portThread.join();
+		}
+		m_port.reset();
 	}
 	m_deviceOn = false;
 	if (m_controller) {
@@ -453,13 +778,21 @@ void CelioNet::setSioMask(uint16_t mask) {
 }
 
 void CelioNet::pushIncoming(Incoming in) {
+	if (m_kind == Kind::NetUsb) {
+		// The adapter is the device
+		if (in.isCommand) {
+			portCommand(in.command);
+		} else {
+			portData(in.data);
+		}
+		return;
+	}
 	std::lock_guard<std::mutex> lock(m_inLock);
 	m_incoming.push_back(std::move(in));
 	m_hasIncoming = true;
 }
 
-void CelioNet::emitStatus(uint16_t status) {
-	log("device status " + std::to_string(status));
+void CelioNet::noteStatus(uint16_t status) {
 	switch (status) {
 	case LinkConnected:
 		setState(State::Connected, "つながりました（通信中）");
@@ -470,19 +803,49 @@ void CelioNet::emitStatus(uint16_t status) {
 	default:
 		break;
 	}
+}
+
+void CelioNet::queueOutgoing(Outgoing item) {
 	// LinkExchangeSession.handleDeviceStatusToSocket
-	if (status == DeviceReady || status == EmuTradeSessionFinished || status == StatusDebug) {
+	if (item.isStatus && (item.status == DeviceReady || item.status == EmuTradeSessionFinished || item.status == StatusDebug)) {
 		return;
 	}
 	std::lock_guard<std::mutex> lock(m_outLock);
-	m_outgoing.push_back(Outgoing{true, status, {}});
+	m_outgoing.push_back(std::move(item));
 	m_outCond.notify_all();
 }
 
+// From the emulated device
+void CelioNet::emitStatus(uint16_t status) {
+	log("device status " + std::to_string(status));
+	noteStatus(status);
+	switch (m_kind) {
+	case Kind::Net:
+		queueOutgoing(Outgoing{true, status, {}});
+		break;
+	case Kind::Direct:
+		sessionStatus(0, status);
+		break;
+	case Kind::FakeAdapter:
+		portStatus(status);
+		break;
+	case Kind::NetUsb:
+		break;
+	}
+}
+
 void CelioNet::emitData(const std::vector<uint16_t>& data) {
-	std::lock_guard<std::mutex> lock(m_outLock);
-	m_outgoing.push_back(Outgoing{false, 0, data});
-	m_outCond.notify_all();
+	switch (m_kind) {
+	case Kind::Net:
+		queueOutgoing(Outgoing{false, 0, data});
+		break;
+	case Kind::Direct:
+	case Kind::FakeAdapter:
+		portData(data);
+		break;
+	case Kind::NetUsb:
+		break;
+	}
 }
 
 void CelioNet::drainIncoming() {
@@ -1065,7 +1428,20 @@ void CelioNet::workThread() {
 			m_linkStartAt = 0;
 			lock.unlock();
 			pushIncoming(Incoming{true, CmdSetMode, {}});
+			if (m_kind == Kind::Direct) {
+				portCommand(CmdSetMode);
+			}
 			lock.lock();
+		}
+		if (m_closeAt && now >= m_closeAt) {
+			// session.ts evict(): both links closed
+			m_closeAt = 0;
+			lock.unlock();
+			m_deviceOn = false;
+			portCommand(CmdCancel);
+			setState(State::Finished, "通信が おわりました");
+			lock.lock();
+			continue;
 		}
 		if (m_connected && now - m_lastReceive > 6000) {
 			// The relay pings every 500 ms; silence means the socket is dead
@@ -1109,6 +1485,255 @@ void CelioNet::workThread() {
 			}
 		}
 	}
+}
+
+
+// ---- USB adapter -------------------------------------------------------------
+
+bool CelioNet::portSend(uint8_t channel, const uint8_t* data, size_t size) {
+	if (!m_port || size > MAX_PAYLOAD) {
+		return false;
+	}
+	std::vector<uint8_t> frame;
+	frame.reserve(5 + size);
+	frame.push_back(SYNC_0);
+	frame.push_back(SYNC_1);
+	frame.push_back(channel);
+	frame.push_back((uint8_t) (size & 0xFF));
+	frame.push_back((uint8_t) (size >> 8));
+	frame.insert(frame.end(), data, data + size);
+	return m_port->write(frame.data(), frame.size());
+}
+
+bool CelioNet::portCommand(uint16_t command) {
+	if (command > 0xFF) {
+		return false;
+	}
+	// SetMode carries the mode (LinkDeviceUtils.enableLinkMode); the rest are one byte
+	uint8_t payload[2] = {(uint8_t) command, LINK_MODE_ONLINE};
+	size_t size = command == CmdSetMode ? 2 : 1;
+	log("adapter command " + std::to_string(command));
+	return portSend(CH_CMD, payload, size);
+}
+
+bool CelioNet::portData(const std::vector<uint16_t>& data) {
+	uint8_t payload[64] = {};
+	for (size_t i = 0; i < 32 && i < data.size(); ++i) {
+		payload[i * 2] = (uint8_t) data[i];
+		payload[i * 2 + 1] = (uint8_t) (data[i] >> 8);
+	}
+	return portSend(CH_DATA, payload, sizeof(payload));
+}
+
+void CelioNet::portStatus(uint16_t status) {
+	uint8_t payload[2] = {(uint8_t) status, (uint8_t) (status >> 8)};
+	portSend(CH_STATUS, payload, sizeof(payload));
+}
+
+static std::vector<uint16_t> unpackData(const std::vector<uint8_t>& payload) {
+	std::vector<uint16_t> data(32);
+	for (size_t i = 0; i < 32; ++i) {
+		data[i] = (uint16_t) (payload[i * 2] | (payload[i * 2 + 1] << 8));
+	}
+	return data;
+}
+
+void CelioNet::portThread() {
+	enum { Sync1, Sync2, Channel, LenLo, LenHi, Payload } state = Sync1;
+	uint8_t channel = 0;
+	size_t length = 0;
+	std::vector<uint8_t> payload;
+	std::vector<uint8_t> chunk;
+	while (!m_stopping && m_port->read(chunk)) {
+		for (uint8_t b : chunk) {
+			// LinkDeviceService.feedByte
+			switch (state) {
+			case Sync1:
+				if (b == SYNC_0) {
+					state = Sync2;
+				}
+				break;
+			case Sync2:
+				state = b == SYNC_1 ? Channel : b == SYNC_0 ? Sync2 : Sync1;
+				break;
+			case Channel:
+				channel = b;
+				state = LenLo;
+				break;
+			case LenLo:
+				length = b;
+				state = LenHi;
+				break;
+			case LenHi:
+				length |= (size_t) b << 8;
+				payload.clear();
+				if (length > MAX_PAYLOAD) {
+					state = Sync1;
+				} else if (length == 0) {
+					handleFrame(channel, payload);
+					state = Sync1;
+				} else {
+					state = Payload;
+				}
+				break;
+			case Payload:
+				payload.push_back(b);
+				if (payload.size() >= length) {
+					handleFrame(channel, payload);
+					state = Sync1;
+				}
+				break;
+			}
+		}
+	}
+	if (m_stopping) {
+		return;
+	}
+	State s = snapshot().state;
+	if (s == State::Finished || s == State::Error) {
+		return;
+	}
+	log("port closed");
+	m_deviceOn = false;
+	setState(State::Error, m_kind == Kind::FakeAdapter ? "相手が はずれました" : "USB の変換器が はずれました");
+	if (m_kind == Kind::NetUsb) {
+		m_stopping = true;
+		std::lock_guard<std::mutex> lock(m_wsLock);
+		if (m_ws) {
+			m_ws->abort();
+		}
+	}
+}
+
+void CelioNet::handleFrame(uint8_t channel, const std::vector<uint8_t>& payload) {
+	if (m_kind == Kind::FakeAdapter) {
+		// Answer as the adapter firmware does (control.hpp, module/link.cpp) with the emulated device behind it
+		if (channel == CH_CMD && !payload.empty()) {
+			uint8_t command = payload[0];
+			log("fake adapter command " + std::to_string(command));
+			if (command == CmdGetFirmwareInfo) {
+				uint8_t reply[5] = {CmdGetFirmwareInfo, 0, 0, 0, 0};
+				portSend(CH_DATA, reply, sizeof(reply));
+			} else {
+				pushIncoming(Incoming{true, command, {}});
+			}
+		} else if (channel == CH_DATA && payload.size() == 64) {
+			pushIncoming(Incoming{false, 0, unpackData(payload)});
+		}
+		return;
+	}
+	if (channel == CH_STATUS && payload.size() == 2) {
+		uint16_t status = (uint16_t) (payload[0] | (payload[1] << 8));
+		log("adapter status " + std::to_string(status));
+		if (m_kind == Kind::NetUsb) {
+			noteStatus(status);
+			queueOutgoing(Outgoing{true, status, {}});
+		} else if (m_kind == Kind::Direct) {
+			sessionStatus(1, status);
+		}
+	} else if (channel == CH_DATA && payload.size() == 64) {
+		if (m_kind == Kind::NetUsb) {
+			queueOutgoing(Outgoing{false, 0, unpackData(payload)});
+		} else if (m_kind == Kind::Direct) {
+			// The serial line keeps the order, so no sequence numbers here
+			pushIncoming(Incoming{false, 0, unpackData(payload)});
+		}
+	} else if (channel == CH_DATA && payload.size() >= 4 && payload[0] == CmdGetFirmwareInfo) {
+		m_firmwareSeen = true;
+		log("adapter firmware " + std::to_string(payload[1]) + "." + std::to_string(payload[2]) + "." + std::to_string(payload[3]));
+	}
+}
+
+void CelioNet::sessionCommand(int who, uint16_t command) {
+	if (who == 0) {
+		pushIncoming(Incoming{true, command, {}});
+	} else {
+		portCommand(command);
+	}
+}
+
+// Celio-Server session.ts handleStatusMessage between the two local devices
+void CelioNet::sessionStatus(int who, uint16_t status) {
+	// LinkExchangeSession.handleDeviceStatusToSocket drops these before the server
+	if (status == DeviceReady || status == EmuTradeSessionFinished || status == StatusDebug) {
+		return;
+	}
+	std::lock_guard<std::mutex> lock(m_sessionLock);
+	int other = 1 - who;
+	switch (status) {
+	case AwaitMode:
+		sessionCommand(who, m_masterSelected ? CmdSetModeSlave : CmdSetModeMaster);
+		m_masterSelected = true;
+		break;
+	case AwaitModeEmulator:
+		sessionCommand(who, CmdSetModeSlave);
+		break;
+	case HandshakeReceived:
+		m_sessionStatus[who] = HandshakeReceived;
+		if (m_sessionStatus[other] == HandshakeReceived) {
+			sessionCommand(who, CmdStartHandshake);
+			sessionCommand(other, CmdStartHandshake);
+		}
+		break;
+	case HandshakeFinished:
+	case LinkReconnecting:
+		m_sessionStatus[who] = status;
+		break;
+	case LinkConnected:
+		m_sessionStatus[who] = LinkConnected;
+		sessionCommand(other, CmdConnectLink);
+		break;
+	case LinkClosed:
+		m_sessionStatus[who] = LinkClosed;
+		if (m_sessionStatus[other] == LinkClosed) {
+			std::lock_guard<std::mutex> outLock(m_outLock);
+			m_closeAt = nowMs() + 2000;
+		}
+		break;
+	default:
+		break;
+	}
+}
+
+std::vector<CelioNet::SerialPortInfo> CelioNet::listSerialPorts() {
+	std::vector<SerialPortInfo> ports;
+	// GUID_DEVCLASS_PORTS
+	static const GUID portsClass = {0x4d36e978, 0xe325, 0x11ce, {0xbf, 0xc1, 0x08, 0x00, 0x2b, 0xe1, 0x03, 0x18}};
+	HDEVINFO set = SetupDiGetClassDevsW(&portsClass, nullptr, nullptr, DIGCF_PRESENT);
+	if (set == INVALID_HANDLE_VALUE) {
+		return ports;
+	}
+	SP_DEVINFO_DATA info{};
+	info.cbSize = sizeof(info);
+	for (DWORD i = 0; SetupDiEnumDeviceInfo(set, i, &info); ++i) {
+		HKEY key = SetupDiOpenDevRegKey(set, &info, DICS_FLAG_GLOBAL, 0, DIREG_DEV, KEY_READ);
+		if (key == INVALID_HANDLE_VALUE) {
+			continue;
+		}
+		char name[64] = {};
+		DWORD size = sizeof(name) - 1;
+		LONG ok = RegQueryValueExA(key, "PortName", nullptr, nullptr, (LPBYTE) name, &size);
+		RegCloseKey(key);
+		if (ok != ERROR_SUCCESS || strncmp(name, "COM", 3) != 0) {
+			continue;
+		}
+		char hwid[512] = {};
+		SetupDiGetDeviceRegistryPropertyA(set, &info, SPDRP_HARDWAREID, nullptr, (PBYTE) hwid, sizeof(hwid) - 2, nullptr);
+		wchar_t wdesc[256] = {};
+		SetupDiGetDeviceRegistryPropertyW(set, &info, SPDRP_FRIENDLYNAME, nullptr, (PBYTE) wdesc, sizeof(wdesc) - sizeof(wchar_t), nullptr);
+		char desc[768] = {};
+		WideCharToMultiByte(CP_UTF8, 0, wdesc, -1, desc, sizeof(desc) - 1, nullptr, nullptr);
+		std::string id = hwid;
+		for (char& c : id) {
+			c = (char) toupper((unsigned char) c);
+		}
+		ports.push_back(SerialPortInfo{name, desc, id.find("VID_2FE3") != std::string::npos});
+	}
+	SetupDiDestroyDeviceInfoList(set);
+	std::stable_sort(ports.begin(), ports.end(), [](const SerialPortInfo& a, const SerialPortInfo& b) {
+		return a.adapter && !b.adapter;
+	});
+	return ports;
 }
 
 }

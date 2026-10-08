@@ -87,6 +87,49 @@
     const end = e => { b.classList.remove('pressed'); touches.delete(e.pointerId); updateKeys(); };
     b.onpointerup = end; b.onpointercancel = end; b.onlostpointercapture = end;
   }
+  const play = document.querySelector('.play');
+  const groups = ['dpad','ab','shoulders','system'];
+  let layout = {overlay:true,scale:.75,opacity:.55,positions:{}}, editing = false, drag;
+  try { const saved = JSON.parse(localStorage.getItem('mgba-touch-layout')); if (saved) layout = {...layout,...saved}; } catch (_) {}
+  function applyLayout() {
+    play.classList.toggle('overlay', layout.overlay);
+    play.classList.toggle('editing', editing);
+    play.style.setProperty('--pad-scale', layout.scale);
+    play.style.setProperty('--pad-opacity', layout.opacity);
+    $('overlay').checked = layout.overlay;
+    $('pad-scale').value = layout.scale; $('pad-opacity').value = layout.opacity;
+    $('pad-edit').disabled = !layout.overlay;
+    $('pad-edit').textContent = editing ? '位置調整を終える' : '位置を調整';
+    for (const group of groups) {
+      const el = play.querySelector('.'+group), pos = layout.positions[group];
+      el.style.left = layout.overlay && pos ? pos.x+'%' : '';
+      el.style.top = layout.overlay && pos ? pos.y+'%' : '';
+    }
+  }
+  function storeLayout() { try { localStorage.setItem('mgba-touch-layout',JSON.stringify(layout)); } catch (_) {} }
+  $('overlay').onchange = () => { layout.overlay = $('overlay').checked; editing = false; release(); applyLayout(); storeLayout(); };
+  for (const [id,key] of [['pad-scale','scale'],['pad-opacity','opacity']]) $(id).oninput = () => { layout[key] = +$(id).value; applyLayout(); storeLayout(); };
+  $('pad-edit').onclick = () => { editing = !editing; release(); if (editing && loaded && !paused) togglePause(); applyLayout(); if (editing) play.scrollIntoView({block:'center'}); };
+  $('pad-default').onclick = () => { layout = {overlay:true,scale:.75,opacity:.55,positions:{}}; editing = false; release(); applyLayout(); storeLayout(); };
+  for (const group of groups) {
+    const el = play.querySelector('.'+group);
+    el.addEventListener('pointerdown', e => {
+      if (!editing) return;
+      e.preventDefault(); e.stopPropagation(); release();
+      const rect = play.getBoundingClientRect(), bounds = el.getBoundingClientRect();
+      drag = {id:e.pointerId,group,dx:e.clientX-(bounds.left+bounds.width/2),dy:e.clientY-(bounds.top+bounds.height/2)};
+      el.setPointerCapture(e.pointerId);
+    },true);
+    el.addEventListener('pointermove', e => {
+      if (!editing || !drag || drag.id !== e.pointerId || drag.group !== group) return;
+      e.preventDefault(); e.stopPropagation();
+      const rect = play.getBoundingClientRect();
+      layout.positions[group] = {x:Math.max(5,Math.min(95,100*(e.clientX-rect.left-drag.dx)/rect.width)),y:Math.max(5,Math.min(95,100*(e.clientY-rect.top-drag.dy)/rect.height))};
+      applyLayout();
+    });
+    for (const type of ['pointerup','pointercancel','lostpointercapture']) el.addEventListener(type,e => { if (drag && drag.id === e.pointerId) { drag = null; storeLayout(); } });
+  }
+  applyLayout();
   function playAudio() {
     const n = m._web_audio_read();
     if (!n || !audioContext || audioContext.state !== 'running') return;

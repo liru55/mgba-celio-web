@@ -2,6 +2,7 @@
 (() => {
   const $ = id => document.getElementById(id);
   const status = $('offline-status'), prepare = $('offline-prepare'), clear = $('cache-clear');
+  const clearMain = $('cache-clear-main'), clearStatus = $('cache-clear-status');
   let registration, busy = false;
   function show(result) {
     if (result.error) throw new Error(result.error);
@@ -19,19 +20,25 @@
   }
   async function run(type) {
     if (busy) return;
-    busy = true; prepare.disabled = clear.disabled = true;
+    busy = true; prepare.disabled = clear.disabled = clearMain.disabled = true;
     status.textContent = type === 'PREPARE' ? 'オフライン用のファイルを保存中…' : 'キャッシュを削除中…';
+    if (type === 'CLEAR') clearStatus.textContent = 'キャッシュを削除中…';
     try {
       if (type === 'PREPARE') { try { await navigator.storage?.persist?.(); } catch (_) {} }
       show(await request(type));
-    } catch (error) { status.textContent = `準備できませんでした：${error.message}`; }
-    finally { busy = false; prepare.disabled = clear.disabled = false; }
+      if (type === 'CLEAR') clearStatus.textContent = 'キャッシュを削除しました。セーブデータ・設定は残っています。再読み込みすると最新版を読み込みます。';
+    } catch (error) {
+      status.textContent = `${type === 'CLEAR' ? 'キャッシュを削除できませんでした' : '準備できませんでした'}：${error.message}`;
+      if (type === 'CLEAR') clearStatus.textContent = status.textContent;
+    }
+    finally { busy = false; prepare.disabled = clear.disabled = clearMain.disabled = false; }
   }
   if (!('serviceWorker' in navigator)) {
-    status.textContent = 'このブラウザではオフライン保存に対応していません。'; prepare.disabled = clear.disabled = true; return;
+    status.textContent = 'このブラウザではオフライン保存に対応していません。'; prepare.disabled = clear.disabled = clearMain.disabled = true; return;
   }
   prepare.onclick = () => run('PREPARE');
   clear.onclick = () => run('CLEAR');
+  clearMain.onclick = () => run('CLEAR');
   request('STATUS').then(show).catch(error => { status.textContent = `準備状況を確認できません：${error.message}`; });
   navigator.serviceWorker.addEventListener('controllerchange', () => { if (!busy) request('STATUS').then(show).catch(() => {}); });
 })();

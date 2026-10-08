@@ -99,7 +99,7 @@
     } catch (e) { status.textContent = e.message; }
     romLoading = false; updatePauseBanner();
     for (const id of ['pause','reset','export','import']) $(id).disabled = !loaded;
-    $('screenshot-save').disabled = !loaded; $('quick-save').disabled = !loaded; $('cheat-add').disabled = !loaded;
+    $('import-main').disabled = !loaded; $('screenshot-save').disabled = !loaded; $('quick-save').disabled = !loaded; $('cheat-add').disabled = !loaded;
     $('quick-state-save').disabled = !loaded; $('quick-state-load').disabled = !loaded || !quickState;
     $('browser-save-now').disabled = !loaded; $('browser-save-delete').disabled = !loaded;
     $('rom').value = '';
@@ -118,6 +118,9 @@
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   };
   $('quick-save').onclick = () => $('export').click();
+  $('import-main').onclick = () => $('import').click();
+  $('layout-main').onclick = () => openSettings('controls');
+  $('cheats-main').onclick = () => openSettings('cheats');
   $('import').onclick = () => { if (loaded) $('save').click(); };
   $('save').onchange = async () => {
     const file = $('save').files[0]; if (!file || !loaded) return;
@@ -134,7 +137,7 @@
     scene.classList.toggle('immersive', active);
     $('fullscreen-exit').hidden = !active;
     $('fullscreen-layout').hidden = !active;
-    $('fullscreen').textContent = active ? '通常画面に戻る' : '画面を広げる';
+    $('fullscreen').textContent = active ? '戻る' : '全画面';
     applyLayout(); release();
   }
   async function exitFullscreen() {
@@ -170,13 +173,23 @@
     };
   }
   function openSettings(tab) {
-    if (tab) selectTab(tab);
+    const dialog = tab === 'link' ? $('link-dialog') : $('settings');
+    if (tab && tab !== 'link') selectTab(tab);
+    const other = dialog === $('settings') ? $('link-dialog') : $('settings');
+    if (other.open) other.close();
+    const scene=document.querySelector('.play');
+    (document.fullscreenElement===scene?scene:document.querySelector('main')).append(dialog);
     if (!menuOpen) { resumeAfterMenu = loaded && !paused; if (resumeAfterMenu) togglePause(); }
-    menuOpen = true; updatePauseBanner(); padKeys = 0; release(); $('settings').showModal();
+    menuOpen = true; updatePauseBanner(); padKeys = 0; release(); if (!dialog.open) dialog.showModal();
   }
   $('settings-open').onclick = () => openSettings();
+  $('file-menu-open').onclick=()=>openSettings('save');
+  $('about-open').onclick=()=>openSettings('help');
+  $('link-settings-open').onclick=()=>openSettings('link');
+  $('link-dialog-close').onclick=()=>$('link-dialog').close();
   $('settings-close').onclick = () => $('settings').close();
-  $('settings').addEventListener('close', () => {
+  for (const dialog of [$('settings'),$('link-dialog')]) dialog.addEventListener('close', () => {
+    if ($('settings').open || $('link-dialog').open) return;
     menuOpen = false; release();
     if (resumeAfterMenu && loaded && paused && !editing && !document.hidden) togglePause();
     resumeAfterMenu = false; updatePauseBanner();
@@ -207,7 +220,7 @@
   play.append($('edit-bar'));
   const groups = ['dpad','ab','shoulders','system','quick-action-speed','quick-action-save','quick-action-load'];
   const groupElement = group => group.startsWith('quick-') ? $(group) : play.querySelector('.'+group);
-  let layout = {overlay:true,scale:.75,opacity:.55,positions:{},landscapePositions:{}}, editing = false, drag;
+  let layout = {overlay:false,scale:.75,opacity:.8,positions:{},landscapePositions:{}}, editing = false, drag;
   try { const saved = JSON.parse(localStorage.getItem('mgba-touch-layout')); if (saved) layout = {...layout,...saved}; } catch (_) {}
   // Migrate the previous shared toolbar position without losing the saved layout.
   for (const key of ['positions','landscapePositions']) {
@@ -220,7 +233,7 @@
     }
   }
   function applyLayout() {
-    play.classList.toggle('overlay', layout.overlay || play.classList.contains('immersive'));
+    play.classList.toggle('overlay', layout.overlay || editing);
     play.classList.toggle('editing', editing);
     play.style.setProperty('--pad-scale', layout.scale);
     play.style.setProperty('--pad-opacity', layout.opacity);
@@ -256,7 +269,7 @@
   $('pad-edit').onclick = () => { editing = true; padKeys = 0; release(); if (loaded && !paused) togglePause(); applyLayout(); $('settings').close(); play.scrollIntoView({block:'center'}); };
   $('fullscreen-layout').onclick = () => openSettings('controls');
   $('edit-done').onclick = () => { editing = false; applyLayout(); openSettings('controls'); };
-  $('pad-default').onclick = () => { layout = {overlay:true,scale:.75,opacity:.55,positions:{},landscapePositions:{}}; editing = false; release(); applyLayout(); storeLayout(); };
+  $('pad-default').onclick = () => { layout = {overlay:false,scale:.75,opacity:.8,positions:{},landscapePositions:{}}; editing = false; release(); applyLayout(); storeLayout(); };
   for (const group of groups) {
     const el = groupElement(group);
     el.addEventListener('click', e => { if (editing) { e.preventDefault(); e.stopImmediatePropagation(); } },true);
@@ -420,11 +433,16 @@
   setInterval(() => { if (!paused && !document.hidden) saveBrowser().catch(()=>{}); },10000);
   addEventListener('pagehide', () => saveBrowser().catch(()=>{}));
   function updateSound() {
-    $('volume').value = volume; $('volume-value').value = Math.round(volume*100)+'%'; $('mute').checked = muted;
+    $('volume').value = $('volume-main').value = volume;
+    $('volume-value').value = $('volume-main-value').value = Math.round(volume*100)+'%'; $('mute').checked = muted;
+    $('mute-main').textContent = muted ? '音を戻す' : '音を消す';
+    $('mute-main').setAttribute('aria-pressed',String(muted));
+    $('volume-main').classList.toggle('muted',muted);
     if (audioGain) audioGain.gain.setTargetAtTime(muted ? 0 : volume,audioContext.currentTime,.01);
     try { localStorage.setItem('mgba-sound',JSON.stringify({volume,muted})); } catch (_) {}
   }
-  $('volume').oninput = () => { volume = +$('volume').value; updateSound(); };
+  for (const id of ['volume','volume-main']) $(id).oninput = () => { volume = +$(id).value; updateSound(); };
+  $('mute-main').onclick = () => { muted = !muted; updateSound(); enableAudio().catch(()=>{}); };
   $('mute').onchange = () => { muted = $('mute').checked; updateSound(); };
   updateSound();
   $('screenshot-save').onclick = () => {
@@ -461,13 +479,13 @@
     beforeStart:() => saveBrowser(true),
     release, audio:playAudio,
     refresh:() => { pixelHeap=null; if (image) drawFrame(); },
-    open:() => openSettings('link'), close:() => { if ($('settings').open) $('settings').close(); },
+    open:() => openSettings('link'), close:() => { for (const dialog of [$('settings'),$('link-dialog')]) if(dialog.open)dialog.close(); },
     mode:(busy,running) => {
       release(); editing=false; resumeAfterMenu=false;
       if (busy) {
         $('game-speed').value=1; $('game-speed').onchange();
         if (!disabledBeforeLink.size) {
-          for(const id of ['pause','reset','import','open','welcome-open','cheat-add','quick-state-save','quick-state-load','speed-toggle','game-speed','browser-save-now','browser-save-delete','auto-save','pad-edit']) {
+          for(const id of ['pause','reset','import','import-main','open','welcome-open','cheat-add','quick-state-save','quick-state-load','speed-toggle','game-speed','browser-save-now','browser-save-delete','auto-save','pad-edit']) {
             disabledBeforeLink.set(id,$(id).disabled); $(id).disabled=true;
           }
           for(const input of $('cheat-list').querySelectorAll('input,button')) input.disabled=true;

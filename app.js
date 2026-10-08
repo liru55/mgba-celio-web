@@ -244,6 +244,7 @@
     $('pad-scale').value = layout.scale; $('pad-opacity').value = layout.opacity;
     $('scale-value').value = Math.round(layout.scale*100)+'%'; $('opacity-value').value = Math.round(layout.opacity*100)+'%';
     $('edit-bar').hidden = !editing;
+    requestAnimationFrame(placeEditor);
     $('pad-edit').disabled = !!communication?.busy;
     $('pad-edit').textContent = editing ? '位置調整を終える' : 'ボタンの位置を調整';
     for (const group of groups) {
@@ -296,6 +297,37 @@
     });
     for (const type of ['pointerup','pointercancel','lostpointercapture']) el.addEventListener(type,e => { if (drag && drag.id === e.pointerId) { drag = null; storeLayout(); } });
   }
+  const editBar=$('edit-bar'), editHandle=$('edit-handle');
+  let editorPositions={}, editorDrag;
+  try { editorPositions=JSON.parse(localStorage.getItem('mgba-editor-position'))||{}; } catch (_) {}
+  function placeEditor() {
+    if (!editing) return;
+    const key=matchMedia('(orientation:landscape)').matches?'landscape':'portrait', pos=editorPositions[key];
+    if (!pos) return;
+    const bounds=play.getBoundingClientRect(), width=editBar.offsetWidth, height=editBar.offsetHeight;
+    editBar.style.left=Math.max(8,Math.min(bounds.width-width-8,pos.x*bounds.width))+'px';
+    editBar.style.top=Math.max(8,Math.min(bounds.height-height-8,pos.y*bounds.height))+'px';
+    editBar.style.bottom='auto';editBar.style.transform='none';
+  }
+  editHandle.addEventListener('pointerdown',e=>{
+    if (!editing) return;
+    e.preventDefault();e.stopPropagation();
+    const rect=editBar.getBoundingClientRect();editorDrag={id:e.pointerId,dx:e.clientX-rect.left,dy:e.clientY-rect.top};
+    editHandle.setPointerCapture(e.pointerId);
+  });
+  editHandle.addEventListener('pointermove',e=>{
+    if (!editorDrag||editorDrag.id!==e.pointerId) return;
+    e.preventDefault();e.stopPropagation();const bounds=play.getBoundingClientRect();
+    const key=matchMedia('(orientation:landscape)').matches?'landscape':'portrait';
+    editorPositions[key]={x:(e.clientX-bounds.left-editorDrag.dx)/bounds.width,y:(e.clientY-bounds.top-editorDrag.dy)/bounds.height};placeEditor();
+  });
+  for(const type of ['pointerup','pointercancel','lostpointercapture'])editHandle.addEventListener(type,e=>{
+    if(editorDrag?.id!==e.pointerId)return;editorDrag=null;
+    try {localStorage.setItem('mgba-editor-position',JSON.stringify(editorPositions));}catch(_){}
+  });
+  addEventListener('resize',()=>{
+    editBar.style.left=editBar.style.top=editBar.style.bottom=editBar.style.transform='';placeEditor();
+  });
   const dpad = play.querySelector('.dpad');
   let linkedDpad = true;
   try { linkedDpad = localStorage.getItem('mgba-dpad-linked') !== 'false'; } catch (_) {}

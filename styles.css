@@ -1245,3 +1245,6 @@ body.link-mode #quick-actions,body.link-mode #pause-banner {
 }
 .play.editing #edit-bar span { flex:1 0 100%; text-align:center; white-space:normal; }
 .play.editing #edit-bar button { flex:0 0 auto; white-space:nowrap; min-height:44px; padding:10px 16px; }
+
+#edit-handle { touch-action:none; cursor:grab; padding:8px; user-select:none; -webkit-user-select:none; }
+#edit-handle:active { cursor:grabbing; }

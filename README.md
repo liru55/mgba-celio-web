@@ -4,6 +4,8 @@ iPhone / iPad向けのWebAssembly版です。64MBのPokemonStart ROMとスマホ
 
 **起動:** https://liru55.github.io/mgba-celio-web/
 
+**使い方:** https://liru55.github.io/mgba-celio-web/help.html
+
 - `main`: 元のmGBAソース・履歴とWeb版の変更
 - `upstream-source`: 変更前の元ソース（7c1fde50a）
 - `gh-pages`: ビルド済みWeb配信ファイル

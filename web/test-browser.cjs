@@ -4,7 +4,7 @@ const root=path.resolve(__dirname,'../build-web');
 const server=http.createServer((req,res)=>{
   const file=path.join(root,new URL(req.url,'http://localhost').pathname.replace(/^\//,'')||'index.html');
   if(!file.startsWith(root+path.sep)) {res.writeHead(403).end();return;}
-  const types={'.html':'text/html','.js':'application/javascript','.wasm':'application/wasm','.png':'image/png','.webmanifest':'application/manifest+json'};
+  const types={'.css':'text/css','.html':'text/html','.js':'application/javascript','.wasm':'application/wasm','.png':'image/png','.webmanifest':'application/manifest+json'};
   fs.readFile(file,(err,data)=>{if(err){res.writeHead(404).end();return;}res.setHeader('Content-Type',types[path.extname(file)]||'application/octet-stream');res.end(data);});
 });
 (async()=>{
@@ -129,6 +129,16 @@ const server=http.createServer((req,res)=>{
     await page.waitForFunction(()=>document.getElementById('browser-save-status').textContent.includes('削除しました'));
     assert.equal(await page.locator('#auto-save').isChecked(),false);
     await page.locator('#settings-close').click();
+    await page.locator('#settings-open').click();await page.locator('#tab-display').click();
+    await page.locator('#volume').evaluate(el=>{el.value='.45';el.dispatchEvent(new Event('input'));});await page.locator('#mute').check();
+    assert.equal(await page.locator('#volume-value').textContent(),'45%');
+    const sound=await page.evaluate(()=>JSON.parse(localStorage.getItem('mgba-sound')));assert.equal(sound.volume,.45);assert.equal(sound.muted,true);
+    const capture=page.waitForEvent('download');await page.locator('#screenshot-save').click();const png=await capture;
+    assert.equal(png.suggestedFilename(),'renamed-game.png');assert.deepEqual(Array.from(fs.readFileSync(await png.path()).subarray(0,8)),[137,80,78,71,13,10,26,10]);
+    await page.locator('#settings-close').click();assert.equal(await page.locator('main > a.help-link').isVisible(),true);
+    const help=await context.newPage();await help.goto(`http://127.0.0.1:${server.address().port}/help.html`);
+    assert.equal(await help.getByRole('heading',{name:'使い方',exact:true}).count(),1);assert.equal(await help.locator('nav a').count(),6);await help.close();
+    console.log('Mute/volume persistence, PNG screenshot download, visible help link and guide PASS');
     console.log('Browser saves: IndexedDB persistence, reload/rename restore, deletion disables auto-save PASS');
     console.log('Cheats: RAM effect, disable/enable, invalid line rollback, removal PASS');
     console.log('Screenshot hide/tap restore, fullscreen fallback exit/F, landscape bounds PASS');
@@ -144,7 +154,7 @@ const server=http.createServer((req,res)=>{
     await native.locator('#fullscreen-exit').click();await native.waitForFunction(()=>!document.fullscreenElement&&!document.body.classList.contains('expanded'));
     console.log('Desktop fullscreen entry/visible exit/return PASS; native API='+actualNative);await desktop.close();
     await page.waitForFunction(async()=>{
-      const cache=await caches.open('mgba-celio-web-v8');return !!await cache.match('mgba.wasm');
+      const cache=await caches.open('mgba-celio-web-v9');return !!await cache.match('mgba.wasm');
     });
     await page.reload();
     await page.waitForFunction(()=>navigator.serviceWorker.controller);
@@ -160,4 +170,6 @@ const server=http.createServer((req,res)=>{
     await context.close();
   } finally {await browser.close();server.close();}
 })().catch(e=>{console.error(e);server.close();process.exitCode=1;});
+
+
 

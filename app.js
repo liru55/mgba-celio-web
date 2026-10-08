@@ -130,6 +130,7 @@
     const active = document.fullscreenElement === scene || document.body.classList.contains('expanded');
     scene.classList.toggle('immersive', active);
     $('fullscreen-exit').hidden = !active;
+    $('fullscreen-layout').hidden = !active;
     $('fullscreen').textContent = active ? '通常画面に戻る' : '画面を広げる';
     applyLayout(); release();
   }
@@ -200,7 +201,9 @@
     b.onpointerup = end; b.onpointercancel = end; b.onlostpointercapture = end;
   }
   const play = document.querySelector('.play');
-  const groups = ['dpad','ab','shoulders','system'];
+  play.append($('edit-bar'));
+  const groups = ['dpad','ab','shoulders','system','quick-actions'];
+  const groupElement = group => group === 'quick-actions' ? $('quick-actions') : play.querySelector('.'+group);
   let layout = {overlay:true,scale:.75,opacity:.55,positions:{},landscapePositions:{}}, editing = false, drag;
   try { const saved = JSON.parse(localStorage.getItem('mgba-touch-layout')); if (saved) layout = {...layout,...saved}; } catch (_) {}
   function applyLayout() {
@@ -212,25 +215,40 @@
     $('pad-scale').value = layout.scale; $('pad-opacity').value = layout.opacity;
     $('scale-value').value = Math.round(layout.scale*100)+'%'; $('opacity-value').value = Math.round(layout.opacity*100)+'%';
     $('edit-bar').hidden = !editing;
-    $('pad-edit').disabled = !layout.overlay;
+    $('pad-edit').disabled = false;
     $('pad-edit').textContent = editing ? '位置調整を終える' : '位置を調整';
     for (const group of groups) {
       const positions = matchMedia('(orientation:landscape)').matches ? layout.landscapePositions : layout.positions;
-      const el = play.querySelector('.'+group), pos = positions?.[group];
-      el.style.left = play.classList.contains('overlay') && pos ? pos.x+'%' : '';
-      el.style.top = play.classList.contains('overlay') && pos ? pos.y+'%' : '';
+      const el = groupElement(group), pos = positions?.[group];
+      const quick = group === 'quick-actions';
+      const movable = quick || play.classList.contains('overlay');
+      el.style.left = movable && pos ? pos.x+'%' : '';
+      el.style.top = movable && pos ? pos.y+'%' : '';
+      if (quick) {
+        el.classList.toggle('custom-position', !!pos);
+        // Keep every action reachable when the viewport or fullscreen size changes.
+        if (pos) {
+          const bounds = play.getBoundingClientRect();
+          const halfWidth = el.offsetWidth/2 + 8, halfHeight = el.offsetHeight/2 + 8;
+          const clamp = (value, half, size) => Math.max(Math.min(half,size/2),Math.min(Math.max(size-half,size/2),value));
+          el.style.left = clamp(pos.x*bounds.width/100,halfWidth,bounds.width)+'px';
+          el.style.top = clamp(pos.y*bounds.height/100,halfHeight,bounds.height)+'px';
+        }
+      }
     }
   }
   function storeLayout() { try { localStorage.setItem('mgba-touch-layout',JSON.stringify(layout)); } catch (_) {} }
   $('overlay').onchange = () => { layout.overlay = $('overlay').checked; editing = false; release(); applyLayout(); storeLayout(); };
   for (const [id,key] of [['pad-scale','scale'],['pad-opacity','opacity']]) $(id).oninput = () => { layout[key] = +$(id).value; applyLayout(); storeLayout(); };
   $('pad-edit').onclick = () => { editing = true; padKeys = 0; release(); if (loaded && !paused) togglePause(); applyLayout(); $('settings').close(); play.scrollIntoView({block:'center'}); };
+  $('fullscreen-layout').onclick = () => $('pad-edit').click();
   $('edit-done').onclick = () => { editing = false; applyLayout(); openSettings('display'); };
   $('pad-default').onclick = () => { layout = {overlay:true,scale:.75,opacity:.55,positions:{},landscapePositions:{}}; editing = false; release(); applyLayout(); storeLayout(); };
   for (const group of groups) {
-    const el = play.querySelector('.'+group);
+    const el = groupElement(group);
+    el.addEventListener('click', e => { if (editing) { e.preventDefault(); e.stopImmediatePropagation(); } },true);
     el.addEventListener('pointerdown', e => {
-      if (!editing) return;
+      if (!editing || (group !== 'quick-actions' && !play.classList.contains('overlay'))) return;
       e.preventDefault(); e.stopPropagation(); release();
       const rect = play.getBoundingClientRect(), bounds = el.getBoundingClientRect();
       drag = {id:e.pointerId,group,dx:e.clientX-(bounds.left+bounds.width/2),dy:e.clientY-(bounds.top+bounds.height/2)};
@@ -281,6 +299,7 @@
   play.addEventListener('selectstart', e => e.preventDefault());
   applyDpad();
   applyLayout();
+  new ResizeObserver(() => applyLayout()).observe(play);
   matchMedia('(orientation:landscape)').addEventListener('change', () => { drag = null; release(); applyLayout(); });
   const controller = createController({$,play,release,
     onKeys:mask => { padKeys = mask; updateKeys(); },

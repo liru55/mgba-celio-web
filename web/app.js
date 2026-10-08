@@ -21,6 +21,7 @@
   let volume = 1, muted = false;
   try { const sound = JSON.parse(localStorage.getItem('mgba-sound')); if (sound) { volume = Math.max(0,Math.min(1,Number(sound.volume) || 0)); muted = !!sound.muted; } } catch (_) {}
   let communication = null, romBytes = null, pixelBase = 0;
+  const memoryViewer=createMemoryViewer({m,$,available:()=>loaded&&!romLoading&&!communication?.busy});
   let romKey = '', romLoading = false, loadSerial = 0, autoSave = true;
   try { autoSave = localStorage.getItem('mgba-auto-save') !== 'false'; } catch (_) {}
   let speed = 1;
@@ -103,6 +104,7 @@
     $('quick-state-save').disabled = !loaded; $('quick-state-load').disabled = !loaded || !quickState;
     $('browser-save-now').disabled = !loaded; $('browser-save-delete').disabled = !loaded;
     $('rom').value = '';
+    memoryViewer.onGame();
     if (loaded) await communication?.onGame();
   };
   $('pause').onclick = togglePause;

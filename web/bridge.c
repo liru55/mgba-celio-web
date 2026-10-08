@@ -34,6 +34,7 @@ EMSCRIPTEN_KEEPALIVE unsigned web_selected(void) { return selected; }
 EMSCRIPTEN_KEEPALIVE int web_select(unsigned index) { if (index > 1) return 0; selected = index; return 1; }
 EMSCRIPTEN_KEEPALIVE int web_celio_start(unsigned slot) { return slot<2 ? celio_start(slot,slots[slot].machine) : 0; }
 EMSCRIPTEN_KEEPALIVE void web_celio_stop(unsigned slot) { celio_stop(slot); }
+EMSCRIPTEN_KEEPALIVE unsigned web_memory_read8(uint32_t address) { return core ? core->rawRead8(core,address,-1) : 0; }
 EMSCRIPTEN_KEEPALIVE unsigned web_bus_read16(uint32_t address) { return core ? core->busRead16(core,address) : 0; }
 EMSCRIPTEN_KEEPALIVE void web_bus_write16(uint32_t address,uint16_t value) { if (core) core->busWrite16(core,address,value); }
 

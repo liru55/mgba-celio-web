@@ -1262,3 +1262,10 @@ body.link-mode #quick-actions,body.link-mode #pause-banner {
 
 .link-buttons > label { grid-column:1 / -1; }
 #link-usb-panel small { display:block; margin-top:12px; }
+
+.memory-tools { display:flex; flex-wrap:wrap; gap:8px; }
+.memory-scroll { overflow:auto; max-height:400px; background:#080b10; border:1px solid var(--border); border-radius:8px; margin:12px 0; }
+#memory-dump { font:12px/1.8 ui-monospace,Consolas,monospace; padding:12px; margin:0; white-space:pre; color:var(--text); }
+
+.memory-panel { margin-top:12px; }
+body:not(.ui-loaded) .memory-panel,.clean-view .memory-panel { display:none; }

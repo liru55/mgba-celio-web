@@ -1227,8 +1227,8 @@ body.link-mode #quick-actions,body.link-mode #pause-banner {
 }
 
 /* Layout editing uses the whole stage; only movable controls and editor actions remain. */
-.play.editing { grid-template-rows:minmax(0,1fr); }
-.play.editing .emulator-toolbar,
+.play.editing { grid-template-rows:minmax(0,1fr) auto; }
+.play.editing .emulator-toolbar { visibility:hidden; pointer-events:none; }
 .play.editing #fullscreen-layout,
 .play.editing #fullscreen-exit { display:none!important; }
 .play.editing .quick-action { position:absolute; top:18%; transform:translate(-50%,-50%); z-index:8; }
@@ -1283,3 +1283,8 @@ body:not(.ui-loaded) .memory-panel,.clean-view .memory-panel { display:none; }
   .play.has-rom.no-touch:not(.immersive):not(.overlay):not(.editing),
   .play.has-rom.touch-hidden:not(.immersive):not(.overlay):not(.editing) { grid-template-rows:auto auto; }
 }
+
+/* Detached editing actions retain the exact toolbar button dimensions. */
+.play.editing .quick-action button { padding:9px 10px; font-size:12px; }
+@media(max-width:900px) { .play.editing .quick-action button { padding:8px; font-size:11px; } }
+@media(orientation:landscape) and (max-height:600px) { .play.editing .quick-action button { padding:7px; font-size:10px; } }

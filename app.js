@@ -243,8 +243,11 @@
     play.classList.toggle('overlay', layout.overlay || editing);
     play.classList.toggle('editing', editing);
     // Detach movable actions from the toolbar while the toolbar is hidden.
-    for (const id of ['quick-action-speed','quick-action-save','quick-action-load'])
-      (editing ? play : $('quick-actions')).append($(id));
+    for (const id of ['quick-action-speed','quick-action-save','quick-action-load']) {
+      const target=editing ? play : $('quick-actions');
+      // Moving a captured element during pointermove releases pointer capture on iOS.
+      if($(id).parentElement!==target)target.append($(id));
+    }
     play.style.setProperty('--pad-scale', layout.scale);
     play.style.setProperty('--pad-opacity', layout.opacity);
     $('overlay').checked = layout.overlay;
@@ -280,7 +283,7 @@
   function storeLayout() { try { localStorage.setItem('mgba-touch-layout',JSON.stringify(layout)); } catch (_) {} }
   $('overlay').onchange = () => { layout.overlay = $('overlay').checked; editing = false; release(); applyLayout(); storeLayout(); };
   for (const [id,key] of [['pad-scale','scale'],['pad-opacity','opacity'],['left-size','leftSize'],['right-size','rightSize']]) $(id).oninput = () => { layout[key] = +$(id).value; applyLayout(); storeLayout(); };
-  $('pad-edit').onclick = () => { editing = true; padKeys = 0; release(); if (loaded && !paused) togglePause(); applyLayout(); $('settings').close(); play.scrollIntoView({block:'center'}); };
+  $('pad-edit').onclick = () => { layout.overlay=true; applyLayout(); editing = true; padKeys = 0; release(); if (loaded && !paused) togglePause(); applyLayout(); $('settings').close(); play.scrollIntoView({block:'center'}); };
   $('fullscreen-layout').onclick = () => openSettings('controls');
   $('edit-done').onclick = () => { editing = false; applyLayout(); openSettings('controls'); };
   function resetLayout(keepEditing=false) { layout = {overlay:false,scale:.75,opacity:.8,leftSize:1,rightSize:1,positions:{},landscapePositions:{}}; editing = keepEditing; release(); applyLayout(); storeLayout(); }

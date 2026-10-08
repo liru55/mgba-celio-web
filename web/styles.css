@@ -1312,6 +1312,17 @@ body:not(.ui-loaded) .memory-panel,.clean-view .memory-panel { display:none; }
 /* Skin layers are absolute; reserve row 1 for artwork and row 2 for the toolbar. */
 .play.delta-skin { grid-template-columns:minmax(0,1fr); }
 .play.delta-skin .emulator-toolbar { grid-row:2; grid-column:1; align-self:start; z-index:9; }
-.play.delta-skin .screen-viewport { grid-row:1; grid-column:1; }
+.skin-stage { position:relative; grid-row:1; grid-column:1; min-width:0; min-height:0; overflow:hidden; }
 
 .play.delta-skin .quick-action.custom-position { position:static; transform:none; max-width:none; }
+
+.rom-entry { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 0; border-bottom:1px solid var(--border); }
+.rom-entry > div:first-child { min-width:0; }
+.rom-entry span { display:block; overflow-wrap:anywhere; }
+.rom-entry small { color:var(--muted); }
+.rom-entry-actions { display:flex; gap:6px; flex-shrink:0; }
+#welcome #rom-library-open { font-size:13px; }
+
+.play.toolbar-hidden .emulator-toolbar { display:none!important; }
+#toolbar-restore { position:absolute; right:12px; bottom:max(12px,env(safe-area-inset-bottom)); z-index:12; opacity:.75; font-size:12px; }
+.play:not(.has-rom) #toolbar-restore,.play.editing #toolbar-restore,.clean-view #toolbar-restore { display:none!important; }

@@ -9,6 +9,8 @@
 >   so that Celio-mGBA-Link (which checks the commit of celio edition 2.0.0) keeps working.
 > - Windows build: File > ネット通信... (online link) connects two players through the public [Celio](https://github.com/Celio-Link) relay
 >   with a 4-digit room number. No Lua script or web page is needed.
+> - Windows build: a real GBA can join through a GBLink / Celio USB adapter (its CDC serial port), either linked
+>   directly with this emulator (no server) or entering a relay room in place of the emulated GBA. No web page is needed.
 > - Games that use the second half of a 64MiB ROM only work on this build; other emulators and real hardware cannot read it.
 >
 > See [readme.txt](readme.txt) (Japanese) for usage notes. License: MPL-2.0, same as mGBA.

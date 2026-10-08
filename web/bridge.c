@@ -2,6 +2,7 @@
 #include <emscripten/emscripten.h>
 #include <mgba/core/core.h>
 #include <mgba/core/cheats.h>
+#include <mgba/core/serialize.h>
 #include <mgba-util/audio-buffer.h>
 #include <mgba-util/image.h>
 #include <mgba-util/vfs.h>
@@ -11,6 +12,7 @@ static mColor pixels[256 * 224];
 static int16_t audio[4096 * 2];
 static void* rom;
 static void* save;
+static void* state;
 static unsigned width, height;
 
 EMSCRIPTEN_KEEPALIVE void web_close(void) {
@@ -21,6 +23,7 @@ EMSCRIPTEN_KEEPALIVE void web_close(void) {
   }
   free(rom); rom = NULL;
   free(save); save = NULL;
+  free(state); state = NULL;
 }
 
 EMSCRIPTEN_KEEPALIVE int web_load(const void* data, size_t size) {
@@ -115,4 +118,31 @@ EMSCRIPTEN_KEEPALIVE int web_cheat_remove(unsigned index) {
   mCheatRemoveSet(device, set);
   mCheatSetDeinit(set);
   return 1;
+}
+
+/* A complete quick state, including save RAM and RTC, stays on this device. */
+EMSCRIPTEN_KEEPALIVE size_t web_state_export(void) {
+  free(state); state = NULL;
+  if (!core) return 0;
+  struct VFile* vf = VFileMemChunk(NULL, 0);
+  if (!vf) return 0;
+  if (!mCoreSaveStateNamed(core, vf, SAVESTATE_SAVEDATA | SAVESTATE_RTC)) { vf->close(vf); return 0; }
+  ssize_t size = vf->size(vf);
+  if (size <= 0 || size > 16 * 1024 * 1024) { vf->close(vf); return 0; }
+  state = malloc(size);
+  if (!state) { vf->close(vf); return 0; }
+  vf->seek(vf, 0, SEEK_SET);
+  bool ok = vf->read(vf, state, size) == size;
+  vf->close(vf);
+  if (!ok) { free(state); state = NULL; return 0; }
+  return size;
+}
+EMSCRIPTEN_KEEPALIVE void* web_state_data(void) { return state; }
+EMSCRIPTEN_KEEPALIVE int web_state_import(const void* data, size_t size) {
+  if (!core || !data || size < core->stateSize(core) || size > 16 * 1024 * 1024) return 0;
+  struct VFile* vf = VFileFromConstMemory(data, size);
+  if (!vf) return 0;
+  bool ok = mCoreLoadStateNamed(core, vf, SAVESTATE_SAVEDATA | SAVESTATE_RTC);
+  vf->close(vf);
+  return ok;
 }

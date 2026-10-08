@@ -13,6 +13,9 @@ const server=http.createServer((req,res)=>{
   try {
     const context=await browser.newContext({...devices['iPhone 13']});
     await context.addInitScript(()=>{
+      window.__audioRates=[];const Audio=window.AudioContext||window.webkitAudioContext;
+      if(Audio){const make=Audio.prototype.createBufferSource;Audio.prototype.createBufferSource=function(...args){const source=make.apply(this,args),start=source.start;source.start=function(...args){window.__audioRates.push(source.playbackRate.value);window.__audioRates=window.__audioRates.slice(-64);return start.apply(this,args)};return source}};
+
       let create;
       Object.defineProperty(window,'createMGBA',{configurable:true,get:()=>create,set:fn=>{
         create=async(...args)=>{const m=await fn(...args); window.__frames=0; window.__lastKeys=0;
@@ -34,11 +37,59 @@ const server=http.createServer((req,res)=>{
     assert.equal(await page.locator('#screen').evaluate(c=>c.getContext('2d').getImageData(0,0,1,1).data[3]),255);
     await page.keyboard.press('Space');
     assert.equal(await page.locator('#pause').textContent(),'再開');
-    await page.keyboard.press('Space');
+    assert.equal(await page.locator('#pause-banner').isVisible(),true);await page.locator('#pause-banner').click();assert.equal(await page.locator('#pause-banner').isVisible(),false);
+    await page.keyboard.press('Space');await page.locator('#screen').tap({position:{x:10,y:10}});assert.equal(await page.locator('#pause').textContent(),'一時停止');
     await page.keyboard.down('z');await page.waitForFunction(()=>window.__lastKeys===1);await page.keyboard.up('z');
     const touch=page.locator('[data-key="0"]');await touch.dispatchEvent('pointerdown',{pointerId:1,pointerType:'touch'});
     await page.waitForFunction(()=>window.__lastKeys===1);await touch.dispatchEvent('pointercancel',{pointerId:1,pointerType:'touch'});
     await page.waitForFunction(()=>window.__lastKeys===0);
+    let padBox=await page.locator('.dpad').boundingBox();
+    await page.mouse.move(padBox.x+padBox.width/2,padBox.y+padBox.height*.12);await page.mouse.down();await page.waitForFunction(()=>window.__lastKeys===64);
+    await page.mouse.move(padBox.x+padBox.width/2,padBox.y+padBox.height/2);await page.waitForFunction(()=>window.__lastKeys===0);
+    await page.mouse.move(padBox.x+padBox.width/2,padBox.y+padBox.height*.88);await page.waitForFunction(()=>window.__lastKeys===128);
+    await page.mouse.move(padBox.x+padBox.width*.88,padBox.y+padBox.height*.88);await page.waitForFunction(()=>window.__lastKeys===(128|16));
+    await page.keyboard.down('z');await page.waitForFunction(()=>window.__lastKeys===(128|16|1));
+    await page.mouse.move(padBox.x-padBox.width,padBox.y-padBox.height);await page.waitForFunction(()=>window.__lastKeys===1);await page.mouse.up();await page.keyboard.up('z');await page.waitForFunction(()=>window.__lastKeys===0);
+    assert.equal(await page.locator('.play').evaluate(el=>getComputedStyle(el).webkitUserSelect),'none');
+    assert.equal(await page.locator('.dpad').evaluate(el=>el.dispatchEvent(new Event('contextmenu',{bubbles:true,cancelable:true}))),false);
+    await page.locator('#settings-open').click();await page.locator('#tab-controls').click();await page.locator('#dpad-linked').uncheck();assert.equal(await page.locator('.dpad').evaluate(el=>el.classList.contains('linked')),false);await page.locator('#settings-close').click();
+    const upButton=await page.locator('.dpad .up').boundingBox();await page.mouse.move(upButton.x+upButton.width/2,upButton.y+upButton.height/2);await page.mouse.down();await page.waitForFunction(()=>window.__lastKeys===64);await page.mouse.up();await page.waitForFunction(()=>window.__lastKeys===0);
+    await page.locator('#settings-open').click();await page.locator('#tab-display').click();
+    await page.locator('#screen-effect').selectOption('scanline');
+    await page.waitForFunction(()=>document.getElementById('effect-screen')&&!document.getElementById('effect-screen').hidden || document.getElementById('effect-status').textContent.includes('戻しました'));
+    const gpu=await page.locator('#effect-screen').evaluate(c=>!c.hidden);
+    if(gpu){
+      for(const preset of ['lcd','crt','xbrz','scanline']){
+        await page.locator('#screen-effect').selectOption(preset);
+        await page.waitForFunction(()=>!document.getElementById('effect-screen').hidden&&!document.getElementById('effect-status').textContent.includes('準備中'));
+        assert.equal(await page.locator('#effect-status').textContent(), 'シェーダー表示：'+(preset==='xbrz'?'xBRZ Freescale Multipass':preset==='lcd'?'液晶風':preset==='crt'?'CRT風':'スキャンライン'));
+        assert.equal(await page.locator('#effect-screen').evaluate(c=>c.getContext('webgl').getError()),0);
+      }
+    }else console.log('WebGL unavailable: safe fallback PASS');
+    await page.locator('#screen-effect').selectOption('off');assert.equal(await page.locator('#screen').evaluate(c=>c.style.opacity),'');
+    await page.locator('#game-speed').selectOption('1');await page.locator('#settings-close').click();
+    const measureFrames=()=>page.evaluate(()=>new Promise(resolve=>{const first=window.__frames;setTimeout(()=>resolve(window.__frames-first),600)}));
+    const normalFrames=await measureFrames();
+    await page.locator('#settings-open').click();await page.locator('#tab-display').click();await page.locator('#game-speed').selectOption('2');await page.locator('#settings-close').click();const fastFrames=await measureFrames();assert.ok(fastFrames>normalFrames*1.45,normalFrames+' / '+fastFrames);
+    await page.locator('#settings-open').click();await page.locator('#tab-display').click();await page.locator('#game-speed').selectOption('1');await page.locator('#settings-close').click();
+    console.log('Connected D-pad glide, neutral/diagonal/outside release, simultaneous A, classic toggle, GPU presets, xBRZ two-pass, actual 2x frames PASS; GPU='+gpu);
+    assert.equal(await page.locator('#quick-actions').isVisible(),true);
+    await page.locator('#speed-toggle').click();assert.equal(await page.locator('#speed-toggle').textContent(),'倍速 2×');await page.locator('#speed-toggle').click();assert.equal(await page.locator('#speed-toggle').textContent(),'倍速 OFF');
+    await page.keyboard.press('Space');
+    await page.locator('#quick-state-save').click();await page.waitForFunction(()=>document.getElementById('quick-message').textContent.includes('クイック保存しました'));
+    const statePicture=await page.locator('#screen').evaluate(c=>Array.from(c.getContext('2d').getImageData(0,0,1,1).data));
+    await page.locator('#screen').evaluate(c=>{const ctx=c.getContext('2d');ctx.fillStyle='red';ctx.fillRect(0,0,1,1)});
+    const statePrefix=await page.evaluate(()=>{const m=window.__m;m._web_state_export();return Array.from(m.HEAPU8.slice(m._web_state_data(),m._web_state_data()+512))});
+    await page.evaluate(()=>{for(let i=0;i<120;i++)window.__m._web_frame(0)});
+    assert.notDeepEqual(await page.evaluate(()=>{const m=window.__m;m._web_state_export();return Array.from(m.HEAPU8.slice(m._web_state_data(),m._web_state_data()+512))}),statePrefix);
+    const stateData=await page.evaluate(()=>{const n=window.__m._web_save_export();return window.__m.HEAPU8[window.__m._web_save_data()]});
+    await page.evaluate(()=>{const m=window.__m,n=m._web_save_export(),data=m.HEAPU8.slice(m._web_save_data(),m._web_save_data()+n);data[0]=123;const p=m._malloc(n);m.HEAPU8.set(data,p);m._web_save_import(p,n);m._free(p)});
+    await page.locator('#quick-state-load').click();assert.equal(await page.evaluate(()=>{const m=window.__m;m._web_save_export();return m.HEAPU8[m._web_save_data()]}),stateData);
+    assert.deepEqual(await page.evaluate(()=>{const m=window.__m;m._web_state_export();return Array.from(m.HEAPU8.slice(m._web_state_data(),m._web_state_data()+512))}),statePrefix);
+    assert.deepEqual(await page.locator('#screen').evaluate(c=>Array.from(c.getContext('2d').getImageData(0,0,1,1).data)),statePicture);
+    await page.keyboard.press('Space');
+    await page.locator('#settings-open').click();await page.locator('#tab-controls').click();await page.locator('#show-quick').uncheck();assert.equal(await page.locator('#quick-actions').isVisible(),false);await page.locator('#show-quick').check();await page.locator('#settings-close').click();
+    console.log('Visible speed ON/OFF, complete quick state with save RAM restore, UI visibility switch PASS');
     const download=page.waitForEvent('download');await page.keyboard.press('Control+s');const d=await download;
     assert.equal(d.suggestedFilename(),'smoke.sav');assert.equal(fs.statSync(await d.path()).size,8192);
     await page.locator('#save').setInputFiles({name:'smoke.sav',mimeType:'application/octet-stream',buffer:Buffer.alloc(8192,0x5a)});
@@ -94,7 +145,7 @@ const server=http.createServer((req,res)=>{
     assert.equal(await ram(),0x5a);
     await page.locator('#cheat-list input').uncheck();
     await page.locator('#save').setInputFiles({name:'replacement.srm',mimeType:'application/octet-stream',buffer:Buffer.alloc(8192,0x44)});
-    assert.equal(await ram(),0x44);await page.evaluate(()=>{for(let i=0;i<10;i++)window.__m._web_frame(0)});
+    await page.waitForFunction(()=>document.getElementById('status').textContent==='セーブを読み込みました');assert.equal(await ram(),0x44);await page.evaluate(()=>{for(let i=0;i<10;i++)window.__m._web_frame(0)});
     await page.locator('#cheat-list input').check();assert.equal(await ram(),0x5a);
     await page.locator('#cheat-code').fill('015A00A0\nbad-code');await page.locator('#cheat-add').click();
     assert.match(await page.locator('#cheat-status').textContent(),/2行目/);assert.equal(await page.locator('#cheat-list input').count(),1);
@@ -173,19 +224,22 @@ const server=http.createServer((req,res)=>{
     await page.locator('#settings-close').click();
     console.log('Screen scaling, cache clear preserves saves/settings, explicit offline preparation PASS');
     await page.waitForFunction(async()=>{
-      const cache=await caches.open('mgba-celio-web-v10');return !!await cache.match('mgba.wasm');
+      const cache=await caches.open('mgba-celio-web-v11');return !!await cache.match('mgba.wasm');
     });
     await page.reload();
     await page.waitForFunction(()=>navigator.serviceWorker.controller);
     await page.waitForFunction(()=>!document.getElementById('open').disabled);
     assert.equal(await page.evaluate(()=>localStorage.getItem('mgba-screen-scale')),'1.5');
+    assert.equal(await page.evaluate(()=>localStorage.getItem('mgba-dpad-linked')),'false');
     await page.locator('#settings-open').click();await page.locator('#tab-display').click();
-    assert.equal(await page.locator('#screen-scale-value').textContent(),'150%');await page.locator('#screen-fit').click();assert.equal(await page.locator('#screen-scale-value').textContent(),'100%');await page.locator('#settings-close').click();
+    assert.equal(await page.locator('#screen-scale-value').textContent(),'150%');await page.locator('#screen-fit').click();assert.equal(await page.locator('#screen-scale-value').textContent(),'100%');await page.locator('#screen-effect').selectOption('xbrz');await page.locator('#settings-close').click();
     await new Promise(r=>server.close(r));
     await page.reload();
     await page.waitForFunction(()=>!document.getElementById('open').disabled);
     await page.locator('#rom').setInputFiles({name:'offline.gb',mimeType:'application/octet-stream',buffer:rom});
     await page.waitForFunction(()=>window.__frames>=10);
+    await page.waitForFunction(()=>document.getElementById('effect-status').textContent==='シェーダー表示：xBRZ Freescale Multipass'&&!document.getElementById('effect-screen').hidden);
+    assert.equal(await page.locator('#quick-state-load').isEnabled(),true);await page.locator('#quick-state-load').click();await page.waitForFunction(()=>document.getElementById('quick-message').textContent.includes('戻りました'));
     assert.deepEqual(errors,[]);
     console.log('WebKit: service worker installation, offline reload, offline ROM execution PASS');
     await context.close();

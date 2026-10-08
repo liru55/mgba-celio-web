@@ -742,3 +742,27 @@ textarea{
 
 .play { overflow: hidden; }
 #screen { transform: scale(var(--screen-scale, 1)); transform-origin: center; }
+
+#effect-screen { position:absolute; pointer-events:none; margin:0; max-height:none; z-index:0; transform-origin:center; }
+#effect-screen[hidden] { display:none!important; }
+
+.play, .play * { user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
+.gamepad, .dpad { touch-action:none; }
+.dpad.linked { gap:0; isolation:isolate; }
+.dpad.linked::before { content:""; position:absolute; inset:0; background:#303c59; clip-path:polygon(33.33% 0,66.67% 0,66.67% 33.33%,100% 33.33%,100% 66.67%,66.67% 66.67%,66.67% 100%,33.33% 100%,33.33% 66.67%,0 66.67%,0 33.33%,33.33% 33.33%); z-index:-1; }
+.dpad.linked button { border-radius:0; border:0; background:transparent; }
+.dpad.linked button.pressed { background:#526eaa; }
+
+#quick-actions { position:absolute; top:10px; right:10px; display:flex; gap:5px; z-index:2; max-width:calc(100% - 20px); }
+#quick-actions button { padding:8px 10px; min-height:44px; font-size:12px; opacity:.8; touch-action:manipulation; }
+.play.immersive #quick-actions { top:max(62px,calc(env(safe-area-inset-top) + 52px)); }
+#quick-actions[hidden], #quick-message[hidden] { display:none!important; }
+#quick-message { position:absolute; bottom:10px; left:10px; right:10px; z-index:3; margin:0; padding:8px; border-radius:8px; background:#151925e8; text-align:center; font-size:12px; pointer-events:none; }
+.clean-view #quick-actions, .clean-view #quick-message, .play.editing #quick-actions { display:none!important; }
+
+#quick-actions { top:52px; right:auto; left:50%; transform:translateX(-50%); white-space:nowrap; }
+
+#pause-banner { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); z-index:3; display:flex; flex-direction:column; align-items:center; gap:5px; width:220px; max-width:calc(100% - 30px); padding:18px; background:#151925ed; border:1px solid #bdc8e1; box-shadow:0 5px 30px #0009; }
+#pause-banner strong { font-size:20px; }
+#pause-banner span { font-size:14px; }
+#pause-banner[hidden], .clean-view #pause-banner { display:none!important; }

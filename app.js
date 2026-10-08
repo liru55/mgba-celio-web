@@ -13,7 +13,7 @@
   $('screen-fit').onclick = () => { screenScale = 1; applyScreenScale(); };
   applyScreenScale();
   let m;
-  try { m = await createMGBA(); } catch (e) { status.textContent = `読み込み失敗: ${e.message}`; return; }
+  try { m = await createMGBA({print: () => {}}); } catch (e) { status.textContent = `読み込み失敗: ${e.message}`; return; }
   const canvas = $('screen'), ctx = canvas.getContext('2d');
   const screenEffects = createScreenEffects(canvas);
   let loaded = false, paused = false, keys = 0, image, pixelRows = [], pixelHeap, cheats = [], name = 'game', clock = 0, nextAudio = 0, audioContext, audioGain;

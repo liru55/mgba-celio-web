@@ -18,6 +18,17 @@
   const screenEffects = createScreenEffects(canvas);
   let loaded = false, paused = false, keys = 0, image, pixelRows = [], pixelHeap, cheats = [], name = 'game', clock = 0, nextAudio = 0, audioContext, audioGain;
   const audioSources = new Set();
+  const vibrationSupported=typeof navigator.vibrate==='function';
+  let vibrationEnabled=true,lastVibration=-Infinity;
+  try {vibrationEnabled=localStorage.getItem('mgba-touch-vibration')!=='false';}catch(_){}
+  $('touch-vibration').checked=vibrationSupported&&vibrationEnabled;
+  $('touch-vibration').disabled=!vibrationSupported;
+  $('touch-vibration-status').textContent=vibrationSupported?'タッチ操作で短く振動します。端末の設定によって振動しない場合があります。':'このブラウザは振動に対応していません。iPhone／iPadのSafariでは利用できません。';
+  function pulseTouch(){
+    const now=performance.now();if(!vibrationSupported||!vibrationEnabled||document.hidden||now-lastVibration<60)return;
+    lastVibration=now;try{navigator.vibrate(12);}catch(_){}
+  }
+  $('touch-vibration').onchange=()=>{vibrationEnabled=$('touch-vibration').checked;try{localStorage.setItem('mgba-touch-vibration',String(vibrationEnabled));}catch(_){}if(vibrationEnabled)pulseTouch();};
   let volume = 1, muted = false;
   try { const sound = JSON.parse(localStorage.getItem('mgba-sound')); if (sound) { volume = Math.max(0,Math.min(1,Number(sound.volume) || 0)); muted = !!sound.muted; } } catch (_) {}
   let communication = null, romBytes = null, pixelBase = 0;
@@ -215,7 +226,7 @@
   addEventListener('focus', () => { focused = true; });
   document.addEventListener('visibilitychange', () => { if (document.hidden) saveBrowser().catch(()=>{}); release(); if (document.hidden && loaded && !paused) togglePause(); });
   for (const b of document.querySelectorAll('[data-key]')) {
-    b.onpointerdown = e => { if (b.closest('.dpad') && linkedDpad) return; e.preventDefault(); b.setPointerCapture(e.pointerId); b.classList.add('pressed'); touches.set(e.pointerId, 1 << +b.dataset.key); updateKeys(); enableAudio().catch(() => {}); };
+    b.onpointerdown = e => { if (b.closest('.dpad') && linkedDpad) return; e.preventDefault(); b.setPointerCapture(e.pointerId); b.classList.add('pressed'); if(e.pointerType==='touch')pulseTouch(); touches.set(e.pointerId, 1 << +b.dataset.key); updateKeys(); enableAudio().catch(() => {}); };
     const end = e => { b.classList.remove('pressed'); touches.delete(e.pointerId); updateKeys(); };
     b.onpointerup = end; b.onpointercancel = end; b.onlostpointercapture = end;
   }
@@ -362,6 +373,7 @@
       if (Math.abs(x) > Math.abs(y)*.55) mask |= 1 << (x > 0 ? 4 : 5);
       if (Math.abs(y) > Math.abs(x)*.55) mask |= 1 << (y > 0 ? 7 : 6);
     }
+    if(mask&&mask!==touches.get(e.pointerId)&&e.pointerType==='touch')pulseTouch();
     touches.set(e.pointerId,mask); updateKeys(); paintDpad();
   }
   function paintDpad() {
@@ -377,6 +389,9 @@
     if (!dpadPointers.delete(e.pointerId)) return;
     touches.delete(e.pointerId); updateKeys(); paintDpad();
   });
+  document.addEventListener('pointerdown',e=>{
+    if(e.pointerType==='touch'&&!editing){const button=e.target.closest('button');if(button&&!button.disabled&&!button.hasAttribute('data-key'))pulseTouch();}
+  },{capture:true});
   play.addEventListener('contextmenu', e => e.preventDefault());
   play.addEventListener('selectstart', e => e.preventDefault());
   applyDpad();

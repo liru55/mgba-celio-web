@@ -92,6 +92,11 @@ struct GBA {
 	struct mRumble* rumble;
 	int32_t lastRumble;
 
+	struct mSioMask* sioMask;
+	// Called before the CPU reads SIOMULTI1 (net link; same timing as the Celio script watchpoint)
+	void (*sioReadHook)(void* context);
+	void* sioReadHookContext;
+
 	bool isPristine;
 	size_t pristineRomSize;
 	size_t yankedRomSize;

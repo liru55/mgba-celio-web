@@ -70,10 +70,10 @@ const server=http.createServer((req,res)=>{
     await page.locator('#game-speed').selectOption('1');await page.locator('#settings-close').click();
     const measureFrames=()=>page.evaluate(()=>new Promise(resolve=>{const first=window.__frames;setTimeout(()=>resolve(window.__frames-first),600)}));
     const normalFrames=await measureFrames();
-    await page.locator('#settings-open').click();await page.locator('#tab-display').click();await page.locator('#game-speed').selectOption('2');await page.locator('#settings-close').click();const fastFrames=await measureFrames();assert.ok(fastFrames>normalFrames*1.45,normalFrames+' / '+fastFrames);
+    await page.locator('#settings-open').click();await page.locator('#tab-display').click();await page.locator('#game-speed').selectOption('2');await page.locator('#settings-close').click();const fastFrames=await measureFrames();console.log('Audio rates observed',await page.evaluate(()=>window.__audioRates));assert.ok(fastFrames>normalFrames*1.45,normalFrames+' / '+fastFrames);
     await page.locator('#settings-open').click();await page.locator('#tab-display').click();await page.locator('#game-speed').selectOption('1');await page.locator('#settings-close').click();
     console.log('Connected D-pad glide, neutral/diagonal/outside release, simultaneous A, classic toggle, GPU presets, xBRZ two-pass, actual 2x frames PASS; GPU='+gpu);
-    assert.equal(await page.locator('#quick-actions').isVisible(),true);
+    assert.equal(await page.locator('#speed-toggle').isVisible(),true);
     await page.locator('#speed-toggle').click();assert.equal(await page.locator('#speed-toggle').textContent(),'倍速 2×');await page.locator('#speed-toggle').click();assert.equal(await page.locator('#speed-toggle').textContent(),'倍速 OFF');
     await page.keyboard.press('Space');
     await page.locator('#quick-state-save').click();await page.waitForFunction(()=>document.getElementById('quick-message').textContent.includes('クイック保存しました'));
@@ -88,7 +88,7 @@ const server=http.createServer((req,res)=>{
     assert.deepEqual(await page.evaluate(()=>{const m=window.__m;m._web_state_export();return Array.from(m.HEAPU8.slice(m._web_state_data(),m._web_state_data()+512))}),statePrefix);
     assert.deepEqual(await page.locator('#screen').evaluate(c=>Array.from(c.getContext('2d').getImageData(0,0,1,1).data)),statePicture);
     await page.keyboard.press('Space');
-    await page.locator('#settings-open').click();await page.locator('#tab-controls').click();await page.locator('#show-quick').uncheck();assert.equal(await page.locator('#quick-actions').isVisible(),false);await page.locator('#show-quick').check();await page.locator('#settings-close').click();
+    await page.locator('#settings-open').click();await page.locator('#tab-controls').click();await page.locator('#show-quick').uncheck();assert.equal(await page.locator('#speed-toggle').isVisible(),false);await page.locator('#show-quick').check();await page.locator('#settings-close').click();
     console.log('Visible speed ON/OFF, complete quick state with save RAM restore, UI visibility switch PASS');
     await page.waitForFunction(()=>document.getElementById('pause').textContent==='一時停止');await page.locator('#quick-save').focus();
     const download=page.waitForEvent('download');await page.keyboard.press('Control+s');const d=await download;
@@ -99,7 +99,7 @@ const server=http.createServer((req,res)=>{
     const manifest=await page.evaluate(async()=>await (await fetch('manifest.webmanifest')).json());assert.equal(manifest.display,'standalone');
     assert.equal(await page.locator('#rom').getAttribute('accept'),null);
     assert.equal(await page.locator('#save').getAttribute('accept'),null);
-    await page.locator('#settings-open').click(); await page.locator('#tab-display').click();
+    await page.locator('#settings-open').click(); await page.locator('#tab-controls').click();
     await page.locator('#pad-scale').evaluate(el=>{el.value='.6';el.dispatchEvent(new Event('input'));});
     await page.locator('#pad-opacity').evaluate(el=>{el.value='.4';el.dispatchEvent(new Event('input'));});
     await page.locator('#pad-edit').click();
@@ -196,7 +196,7 @@ const server=http.createServer((req,res)=>{
     assert.equal(png.suggestedFilename(),'renamed-game.png');assert.deepEqual(Array.from(fs.readFileSync(await png.path()).subarray(0,8)),[137,80,78,71,13,10,26,10]);
     await page.locator('#settings-close').click();assert.equal(await page.locator('main > a.help-link').isVisible(),true);
     const help=await context.newPage();await help.goto(`http://127.0.0.1:${server.address().port}/help.html`);
-    assert.equal(await help.getByRole('heading',{name:'使い方',exact:true}).count(),1);assert.equal(await help.locator('nav a').count(),6);await help.close();
+    assert.equal(await help.getByRole('heading',{name:'使い方',exact:true}).count(),1);assert.equal(await help.locator('nav a').count(),7);await help.close();
     console.log('Mute/volume persistence, PNG screenshot download, visible help link and guide PASS');
     console.log('Browser saves: IndexedDB persistence, reload/rename restore, deletion disables auto-save PASS');
     console.log('Cheats: RAM effect, disable/enable, invalid line rollback, removal PASS');
@@ -230,7 +230,7 @@ const server=http.createServer((req,res)=>{
     await page.locator('#settings-close').click();
     console.log('Screen scaling, cache clear preserves saves/settings, explicit offline preparation PASS');
     await page.waitForFunction(async()=>{
-      const cache=await caches.open('mgba-celio-web-v15');return !!await cache.match('mgba.wasm');
+      const cache=await caches.open('mgba-celio-web-v17');return !!await cache.match('mgba.wasm');
     });
     await page.reload();
     await page.waitForFunction(()=>navigator.serviceWorker.controller);

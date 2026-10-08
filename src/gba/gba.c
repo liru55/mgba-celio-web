@@ -589,6 +589,12 @@ void GBAApplyPatch(struct GBA* gba, struct Patch* patch) {
 
 void GBARaiseIRQ(struct GBA* gba, enum GBAIRQ irq, uint32_t cyclesLate) {
 	gba->memory.io[GBA_REG(IF)] |= 1 << irq;
+	if (irq == GBA_IRQ_TIMER3) {
+		mCALLBACKS_INVOKE(gba, timer3IRQ);
+	}
+	if (irq == GBA_IRQ_VBLANK) {
+		mCALLBACKS_INVOKE(gba, vblankIRQ);
+	}
 	GBATestIRQ(gba, cyclesLate);
 }
 

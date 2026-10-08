@@ -19,6 +19,11 @@ if(GIT AND NOT SKIP_GIT)
 	string(REGEX REPLACE "^(refs/)?(heads|tags)/" "" GIT_BRANCH "${GIT_BRANCH}")
 endif()
 
+# Allow overriding the reported commit
+if(DEFINED ENV{MGBA_GIT_COMMIT})
+	set(GIT_COMMIT "$ENV{MGBA_GIT_COMMIT}")
+endif()
+
 if(NOT GIT_REV)
 	set(GIT_REV -1)
 endif()

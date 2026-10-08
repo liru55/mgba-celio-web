@@ -51,6 +51,8 @@ struct mCoreCallbacks {
 	void (*savedataUpdated)(void* context);
 	void (*alarm)(void* context);
 	void (*memoryBlocksChanged)(void* context);
+	void (*timer3IRQ)(void* context);
+	void (*vblankIRQ)(void* context);
 };
 
 DECLARE_VECTOR(mCoreCallbacksList, struct mCoreCallbacks);
@@ -77,6 +79,7 @@ enum mPeripheral {
 	mPERIPH_ROTATION = 1,
 	mPERIPH_RUMBLE,
 	mPERIPH_IMAGE_SOURCE,
+	mPERIPH_SIO_MASK,
 	mPERIPH_CUSTOM = 0x1000
 };
 
@@ -132,6 +135,10 @@ struct mRumble {
 	void (*reset)(struct mRumble*, bool enable);
 	void (*setRumble)(struct mRumble*, bool enable, uint32_t sinceLast);
 	void (*integrate)(struct mRumble*, uint32_t period);
+};
+
+struct mSioMask {
+	uint16_t mask;
 };
 
 struct mRumbleIntegrator {

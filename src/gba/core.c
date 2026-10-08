@@ -587,6 +587,24 @@ static size_t _GBACoreGetAudioBufferSize(struct mCore* core) {
 
 static void _GBACoreAddCoreCallbacks(struct mCore* core, struct mCoreCallbacks* coreCallbacks) {
 	struct GBA* gba = core->board;
+
+	for (size_t i = 0; i < mCoreCallbacksListSize(&gba->coreCallbacks); i++) {
+		struct mCoreCallbacks* callbacks = mCoreCallbacksListGetPointer(&gba->coreCallbacks, i);
+		if (callbacks->videoFrameStarted == coreCallbacks->videoFrameStarted &&
+			callbacks->videoFrameEnded == coreCallbacks->videoFrameEnded &&
+			callbacks->coreCrashed == coreCallbacks->coreCrashed &&
+			callbacks->sleep == coreCallbacks->sleep &&
+			callbacks->shutdown == coreCallbacks->shutdown &&
+			callbacks->keysRead == coreCallbacks->keysRead &&
+			callbacks->savedataUpdated == coreCallbacks->savedataUpdated &&
+			callbacks->alarm == coreCallbacks->alarm &&
+			callbacks->memoryBlocksChanged == coreCallbacks->memoryBlocksChanged &&
+			callbacks->timer3IRQ == coreCallbacks->timer3IRQ &&
+			callbacks->vblankIRQ == coreCallbacks->vblankIRQ) {
+			return;
+		}
+	}
+
 	*mCoreCallbacksListAppend(&gba->coreCallbacks) = *coreCallbacks;
 }
 
@@ -1010,6 +1028,8 @@ static void _GBACoreSetPeripheral(struct mCore* core, int type, void* periph) {
 	case mPERIPH_GBA_LINK_PORT:
 		GBASIOSetDriver(&gba->sio, periph);
 		break;
+	case mPERIPH_SIO_MASK:
+		gba->sioMask = periph;
 	default:
 		return;
 	}

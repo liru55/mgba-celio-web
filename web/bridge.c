@@ -3,19 +3,42 @@
 #include <mgba/core/core.h>
 #include <mgba/core/cheats.h>
 #include <mgba/core/serialize.h>
+#include <mgba/internal/gba/gba.h>
+void celio_stop(unsigned slot);
+int celio_start(unsigned slot, struct mCore* core);
 #include <mgba-util/audio-buffer.h>
 #include <mgba-util/image.h>
 #include <mgba-util/vfs.h>
 
-static struct mCore* core;
-static mColor pixels[256 * 224];
-static int16_t audio[4096 * 2];
-static void* rom;
-static void* save;
-static void* state;
-static unsigned width, height;
+struct WebSlot {
+  struct mCore* machine;
+  mColor video[256 * 224];
+  int16_t sound[4096 * 2];
+  void *romBytes, *savedata, *snapshot;
+  unsigned videoWidth, videoHeight;
+};
+static struct WebSlot slots[2];
+static unsigned selected;
+static void quietLog(struct mLogger* logger, int category, enum mLogLevel level, const char* format, va_list args) { (void)logger; (void)category; (void)level; (void)format; (void)args; }
+static struct mLogger quietLogger = {.log = quietLog};
+#define core slots[selected].machine
+#define pixels slots[selected].video
+#define audio slots[selected].sound
+#define rom slots[selected].romBytes
+#define save slots[selected].savedata
+#define state slots[selected].snapshot
+#define width slots[selected].videoWidth
+#define height slots[selected].videoHeight
+
+EMSCRIPTEN_KEEPALIVE unsigned web_selected(void) { return selected; }
+EMSCRIPTEN_KEEPALIVE int web_select(unsigned index) { if (index > 1) return 0; selected = index; return 1; }
+EMSCRIPTEN_KEEPALIVE int web_celio_start(unsigned slot) { return slot<2 ? celio_start(slot,slots[slot].machine) : 0; }
+EMSCRIPTEN_KEEPALIVE void web_celio_stop(unsigned slot) { celio_stop(slot); }
+EMSCRIPTEN_KEEPALIVE unsigned web_bus_read16(uint32_t address) { return core ? core->busRead16(core,address) : 0; }
+EMSCRIPTEN_KEEPALIVE void web_bus_write16(uint32_t address,uint16_t value) { if (core) core->busWrite16(core,address,value); }
 
 EMSCRIPTEN_KEEPALIVE void web_close(void) {
+  celio_stop(selected);
   if (core) {
     mCoreConfigDeinit(&core->config);
     core->deinit(core);
@@ -29,6 +52,7 @@ EMSCRIPTEN_KEEPALIVE void web_close(void) {
 EMSCRIPTEN_KEEPALIVE int web_load(const void* data, size_t size) {
   if (!data || !size || size > 64 * 1024 * 1024) return 0;
   web_close();
+  mLogSetDefaultLogger(&quietLogger);
   rom = malloc(size);
   if (!rom) return 0;
   memcpy(rom, data, size);
@@ -126,7 +150,7 @@ EMSCRIPTEN_KEEPALIVE size_t web_state_export(void) {
   if (!core) return 0;
   struct VFile* vf = VFileMemChunk(NULL, 0);
   if (!vf) return 0;
-  if (!mCoreSaveStateNamed(core, vf, SAVESTATE_SAVEDATA | SAVESTATE_RTC)) { vf->close(vf); return 0; }
+  if (!mCoreSaveStateNamed(core, vf, SAVESTATE_SAVEDATA | SAVESTATE_RTC | SAVESTATE_SCREENSHOT)) { vf->close(vf); return 0; }
   ssize_t size = vf->size(vf);
   if (size <= 0 || size > 16 * 1024 * 1024) { vf->close(vf); return 0; }
   state = malloc(size);
@@ -142,7 +166,19 @@ EMSCRIPTEN_KEEPALIVE int web_state_import(const void* data, size_t size) {
   if (!core || !data || size < core->stateSize(core) || size > 16 * 1024 * 1024) return 0;
   struct VFile* vf = VFileFromConstMemory(data, size);
   if (!vf) return 0;
-  bool ok = mCoreLoadStateNamed(core, vf, SAVESTATE_SAVEDATA | SAVESTATE_RTC);
+  /* These cores have no save-file backing to write into. Restore the state's
+     private save mask, including saves whose hardware type is not detected yet. */
+  bool ok = mCoreLoadStateNamed(core, vf, SAVESTATE_RTC | SAVESTATE_SCREENSHOT);
   vf->close(vf);
   return ok;
+}
+
+EMSCRIPTEN_KEEPALIVE uint32_t web_state_hash(void) {
+  if (!core) return 0;
+  size_t size = core->stateSize(core);
+  unsigned char* data = calloc(1,size);
+  if (!data || !core->saveState(core,data)) { free(data); return 0; }
+  uint32_t hash = 2166136261u;
+  for (size_t i=0;i<size;++i) hash = (hash ^ data[i]) * 16777619u;
+  free(data); return hash;
 }

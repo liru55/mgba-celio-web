@@ -77,6 +77,7 @@ window.createSkins=({m,$,available,onKeys,blocked,action,pulse,onLayout})=>{
     if(!representation||!play.classList.contains('delta-skin')||applying)return;applying=true;
     try{
       const r=representation,size=r.mappingSize,toolbar=play.querySelector('.emulator-toolbar').getBoundingClientRect().height,w=play.clientWidth,fullscreen=play.classList.contains('immersive'),sf=screenFrame(r),gameAspect=$('screen').width/$('screen').height||1.5;
+      if(w<=0)return;
       let areaWidth=w,areaHeight=w*size.height/size.width,top=0,left=0;
       const paddingTop=fullscreen?48:0;
       if(fullscreen){const availableHeight=Math.max(80,play.clientHeight-toolbar-paddingTop);if(sf){areaWidth=Math.min(w,availableHeight*size.width/size.height);areaHeight=areaWidth*size.height/size.width;top=paddingTop+(availableHeight-areaHeight)/2;left=(w-areaWidth)/2;}else{areaHeight=Math.min(areaHeight,availableHeight*.48);areaWidth=areaHeight*size.width/size.height;left=(w-areaWidth)/2;top=paddingTop+availableHeight-areaHeight;}}
@@ -105,7 +106,7 @@ window.createSkins=({m,$,available,onKeys,blocked,action,pulse,onLayout})=>{
       if(mode==='delta'&&!imported)throw Error('先にDeltaスキンを読み込んでください');
       if(mode==='delta'&&available()){const gba=m._web_platform()===0;if(gba!==imported.info.gameTypeIdentifier.endsWith('.gba'))throw Error('ROMとスキンのゲーム機種が異なります');}
       const r=mode==='delta'?chooseRepresentation(imported.info):frameRepresentation(mode,orient()),image=await artwork(r,imported);if(ticket!==token)return;
-      art.width=image.width;art.height=image.height;art.getContext('2d').drawImage(image,0,0);representation=r;makeControls(r);art.hidden=controls.hidden=false;play.classList.add('delta-skin');lastOrientation=orient();place();$('skin-export').disabled=false;onLayout();
+      art.width=image.width;art.height=image.height;art.getContext('2d').drawImage(image,0,0);representation=r;makeControls(r);art.hidden=controls.hidden=false;play.classList.add('delta-skin');lastOrientation=orient();place();$('skin-export').disabled=false;onLayout();requestAnimationFrame(place);
       report((mode==='delta'?imported.info.name||'Deltaスキン':mode==='gba-frame'?'GBA本体風':'GB本体風')+'を適用しました。スキン使用中はファイルの配置を使います。');
     }catch(e){if(ticket===token){play.classList.remove('delta-skin');onLayout();report(e.message+'。標準の操作ボタンを表示します。');}}
   }

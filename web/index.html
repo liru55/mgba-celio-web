@@ -7,12 +7,12 @@
 </style></head><body><main>
 <header><h1>mGBA <span style="color:#bdc8e1">celio</span></h1><button id="open" disabled>ROMを開く</button><button id="pause" disabled>一時停止</button></header>
 <p id="status" role="status">WASMを読み込み中…</p>
-<input id="rom" type="file" accept=".gba,.gb,.gbc" hidden><input id="save" type="file" accept=".sav" hidden>
+<input id="rom" type="file" hidden><input id="save" type="file" hidden>
 <div class="play"><canvas id="screen" width="240" height="160" aria-label="ゲーム画面"></canvas>
 <div class="gamepad"><div class="shoulders"><button data-key="9">L</button><button data-key="8">R</button></div>
 <div class="primary"><div class="dpad"><button class="up" data-key="6" aria-label="上">↑</button><button class="left" data-key="5" aria-label="左">←</button><button class="down" data-key="7" aria-label="下">↓</button><button class="right" data-key="4" aria-label="右">→</button></div><div class="ab"><button data-key="1">B</button><button data-key="0">A</button></div></div>
 <div class="system"><button data-key="2">SELECT</button><button data-key="3">START</button></div></div></div>
-<details><summary>セーブ・設定・使い方</summary><div class="options"><button id="export" disabled>セーブを書き出す</button><button id="import" disabled>セーブを読み込む</button><button id="reset" disabled>リセット</button><button id="fullscreen">全画面</button></div>
+<details><summary>セーブ・設定・使い方</summary><div class="options"><button id="export" disabled>セーブを書き出す</button><button id="import" disabled>セーブを選んで変更</button><button id="reset" disabled>リセット</button><button id="fullscreen">全画面</button></div>
 <p>iPhone / iPad：Safariの共有メニュー →「ホーム画面に追加」で起動ショートカットを作成できます。</p>
 <p>ROMは端末内で処理します。終了前にセーブを書き出してください。タブを閉じると未書き出しのセーブは失われます。</p>
 <p>キーボード：方向キー / Z：A / X：B / A：L / S：R / Enter：START / Shift：SELECT<br>Ctrl・⌘ + O：ROM / S：セーブ書出 / R：リセット / Shift + O：セーブ読込 / Space：停止 / F：全画面</p></details>

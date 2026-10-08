@@ -110,8 +110,10 @@ window.createSkins=({m,$,available,onKeys,blocked,action,pulse,onLayout})=>{
     try{
       if(mode==='delta'&&!imported)throw Error('先にDeltaスキンを読み込んでください');
       if(mode==='delta'&&available()){const gba=m._web_platform()===0;if(gba!==imported.info.gameTypeIdentifier.endsWith('.gba'))throw Error('ROMとスキンのゲーム機種が異なります');}
-      const r=mode==='delta'?chooseRepresentation(imported.info):frameRepresentation(mode,orient()),image=await artwork(r,imported);if(ticket!==token)return;
-      art.width=image.width;art.height=image.height;art.getContext('2d').drawImage(image,0,0);representation=r;makeControls(r);art.hidden=controls.hidden=false;play.classList.add('delta-skin');mount(true);lastOrientation=orient();place();$('skin-export').disabled=false;onLayout();requestAnimationFrame(place);
+      const orientation=orient();
+      const r=mode==='delta'?chooseRepresentation(imported.info):frameRepresentation(mode,orientation),image=await artwork(r,imported);if(ticket!==token)return;
+      if(orientation!==orient()){await apply();return;}
+      art.width=image.width;art.height=image.height;art.getContext('2d').drawImage(image,0,0);representation=r;makeControls(r);art.hidden=controls.hidden=false;play.classList.add('delta-skin');mount(true);lastOrientation=orientation;place();$('skin-export').disabled=false;onLayout();requestAnimationFrame(place);
       report((mode==='delta'?imported.info.name||'Deltaスキン':mode==='gba-frame'?'GBA本体風':'GB本体風')+'を適用しました。スキン使用中はファイルの配置を使います。');
     }catch(e){if(ticket===token){play.classList.remove('delta-skin');mount(false);viewport.removeAttribute('style');representation=null;art.hidden=controls.hidden=true;onLayout();report(e.message+'。標準の操作ボタンを表示します。');}}
   }
@@ -129,9 +131,10 @@ window.createSkins=({m,$,available,onKeys,blocked,action,pulse,onLayout})=>{
   const classObserver=new MutationObserver(()=>suppressSkin());
   classObserver.observe(play,{attributes:true,attributeFilter:['class']});classObserver.observe(document.body,{attributes:true,attributeFilter:['class']});
   const resizeObserver=new ResizeObserver(()=>requestAnimationFrame(place));resizeObserver.observe(play);resizeObserver.observe(stage);addEventListener('resize',()=>{if(orient()!==lastOrientation&&representation)apply();else place();});
+  window.visualViewport?.addEventListener('resize',()=>requestAnimationFrame(place));
   addEventListener('blur',release);document.addEventListener('visibilitychange',()=>{if(document.hidden)release();});
   play.addEventListener('pointerdown',()=>{if(blocked())release();},{capture:true});
   try{mode=localStorage.getItem('mgba-skin')||'dark';}catch(_){}if(![...select.options].some(o=>o.value===mode))mode='dark';select.value=mode;
   read().then(async bytes=>{if(bytes){imported=unpack(new Uint8Array(bytes));$('skin-remove').disabled=false;}await apply();}).catch(()=>{if(mode==='delta')setMode('dark');});
-  return {release,onGame:()=>apply(),active:()=>!!representation};
+  return {release,onGame:()=>apply(),active:()=>!!representation,refresh:()=>requestAnimationFrame(place)};
 };

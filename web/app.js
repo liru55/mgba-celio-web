@@ -218,9 +218,9 @@
   }
   const play = document.querySelector('.play');
   play.append($('edit-bar'));
-  const groups = ['dpad','ab','shoulders','system','quick-action-speed','quick-action-save','quick-action-load'];
+  const groups = ['dpad','ab','shoulder-l','shoulder-r','system','quick-action-speed','quick-action-save','quick-action-load'];
   const groupElement = group => group.startsWith('quick-') ? $(group) : play.querySelector('.'+group);
-  let layout = {overlay:false,scale:.75,opacity:.8,positions:{},landscapePositions:{}}, editing = false, drag;
+  let layout = {overlay:false,scale:.75,opacity:.8,leftSize:1,rightSize:1,positions:{},landscapePositions:{}}, editing = false, drag;
   try { const saved = JSON.parse(localStorage.getItem('mgba-touch-layout')); if (saved) layout = {...layout,...saved}; } catch (_) {}
   // Migrate the previous shared toolbar position without losing the saved layout.
   for (const key of ['positions','landscapePositions']) {
@@ -231,6 +231,10 @@
         layout[key][id] ||= {x:old.x+offset/width*100,y:old.y};
       delete layout[key]['quick-actions'];
     }
+  }
+  for (const key of ['positions','landscapePositions']) {
+    const old=layout[key]?.shoulders;
+    if(old){layout[key]['shoulder-l'] ||= {x:Math.max(5,old.x-32),y:old.y};layout[key]['shoulder-r'] ||= {x:Math.min(95,old.x+32),y:old.y};delete layout[key].shoulders;}
   }
   function applyLayout() {
     play.classList.toggle('overlay', layout.overlay || editing);
@@ -243,6 +247,9 @@
     $('overlay').checked = layout.overlay;
     $('pad-scale').value = layout.scale; $('pad-opacity').value = layout.opacity;
     $('scale-value').value = Math.round(layout.scale*100)+'%'; $('opacity-value').value = Math.round(layout.opacity*100)+'%';
+    for(const [id,key,css] of [['left','leftSize','--left-size'],['right','rightSize','--right-size']]) {
+      const size=layout[key]||1;play.style.setProperty(css,size);$(id+'-size').value=size;$(id+'-size-value').value=Math.round(size*100)+'%';
+    }
     $('edit-bar').hidden = !editing;
     requestAnimationFrame(placeEditor);
     $('pad-edit').disabled = !!communication?.busy;
@@ -269,11 +276,11 @@
   }
   function storeLayout() { try { localStorage.setItem('mgba-touch-layout',JSON.stringify(layout)); } catch (_) {} }
   $('overlay').onchange = () => { layout.overlay = $('overlay').checked; editing = false; release(); applyLayout(); storeLayout(); };
-  for (const [id,key] of [['pad-scale','scale'],['pad-opacity','opacity']]) $(id).oninput = () => { layout[key] = +$(id).value; applyLayout(); storeLayout(); };
+  for (const [id,key] of [['pad-scale','scale'],['pad-opacity','opacity'],['left-size','leftSize'],['right-size','rightSize']]) $(id).oninput = () => { layout[key] = +$(id).value; applyLayout(); storeLayout(); };
   $('pad-edit').onclick = () => { editing = true; padKeys = 0; release(); if (loaded && !paused) togglePause(); applyLayout(); $('settings').close(); play.scrollIntoView({block:'center'}); };
   $('fullscreen-layout').onclick = () => openSettings('controls');
   $('edit-done').onclick = () => { editing = false; applyLayout(); openSettings('controls'); };
-  function resetLayout(keepEditing=false) { layout = {overlay:false,scale:.75,opacity:.8,positions:{},landscapePositions:{}}; editing = keepEditing; release(); applyLayout(); storeLayout(); }
+  function resetLayout(keepEditing=false) { layout = {overlay:false,scale:.75,opacity:.8,leftSize:1,rightSize:1,positions:{},landscapePositions:{}}; editing = keepEditing; release(); applyLayout(); storeLayout(); }
   $('pad-default').onclick = () => resetLayout();
   $('edit-reset').onclick = () => resetLayout(true);
   for (const group of groups) {
@@ -292,6 +299,8 @@
       const rect = play.getBoundingClientRect();
       const key = matchMedia('(orientation:landscape)').matches ? 'landscapePositions' : 'positions';
       layout[key] ||= {};
+      // A freely moved pad uses its saved overlay coordinates after editing ends.
+      if(!group.startsWith('quick-'))layout.overlay=true;
       layout[key][group] = {x:Math.max(5,Math.min(95,100*(e.clientX-rect.left-drag.dx)/rect.width)),y:Math.max(5,Math.min(95,100*(e.clientY-rect.top-drag.dy)/rect.height))};
       applyLayout();
     });

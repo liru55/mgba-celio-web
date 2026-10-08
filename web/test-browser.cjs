@@ -230,7 +230,7 @@ const server=http.createServer((req,res)=>{
     await page.locator('#settings-close').click();
     console.log('Screen scaling, cache clear preserves saves/settings, explicit offline preparation PASS');
     await page.waitForFunction(async()=>{
-      const cache=await caches.open('mgba-celio-web-v21');return !!await cache.match('mgba.wasm');
+      const cache=await caches.open('mgba-celio-web-v22');return !!await cache.match('mgba.wasm');
     });
     await page.reload();
     await page.waitForFunction(()=>navigator.serviceWorker.controller);

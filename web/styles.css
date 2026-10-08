@@ -1225,3 +1225,23 @@ body.link-mode #quick-actions,body.link-mode #pause-banner {
   right:auto;
   top:15%
 }
+
+/* Layout editing uses the whole stage; only movable controls and editor actions remain. */
+.play.editing { grid-template-rows:minmax(0,1fr); }
+.play.editing .emulator-toolbar,
+.play.editing #fullscreen-layout,
+.play.editing #fullscreen-exit { display:none!important; }
+.play.editing .quick-action { position:absolute; top:18%; transform:translate(-50%,-50%); z-index:8; }
+.play.editing #quick-action-speed { left:24%; }
+.play.editing #quick-action-save { left:51%; }
+.play.editing #quick-action-load { left:79%; }
+.play.editing #edit-bar {
+  bottom:calc(12px + env(safe-area-inset-bottom));
+  width:min(440px,calc(100% - 24px));
+  max-width:none;
+  flex-wrap:wrap;
+  justify-content:center;
+  box-sizing:border-box;
+}
+.play.editing #edit-bar span { flex:1 0 100%; text-align:center; white-space:normal; }
+.play.editing #edit-bar button { flex:0 0 auto; white-space:nowrap; min-height:44px; padding:10px 16px; }

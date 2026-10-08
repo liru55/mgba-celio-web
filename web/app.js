@@ -464,7 +464,7 @@
 
   const readBrowserSave = key => localSaves.read(key);
   function browserSaveLabel(prefix,updated) { $('browser-save-status').textContent = prefix+'：'+new Date(updated).toLocaleTimeString('ja-JP'); }
-  async function saveBrowser(force=false) {
+  async function saveBrowser(force=false,strict=false) {
     if (!loaded || romLoading || !romKey || communication?.busy || (communication?.blockSave && !force) || (!autoSave && !force)) return;
     const key = romKey, n = m._web_save_export();
     if (!n) { if (force) $('browser-save-status').textContent = 'このゲームのセーブデータはまだありません。'; return; }
@@ -472,8 +472,12 @@
     try {
       await localSaves.write(key,{bytes,updated,filename});
       if (romKey === key) browserSaveLabel('ブラウザに保存しました',updated);
-    } catch (_) { if (romKey === key) $('browser-save-status').textContent = '保存できませんでした。ファイルに書き出してください。'; }
+    } catch (_) { if (romKey === key) $('browser-save-status').textContent = '保存できませんでした。ファイルに書き出してください。'; if(strict)throw new Error('セーブを保存できませんでした。先にファイルに書き出してください。'); }
   }
+  window.prepareCacheReload = async () => {
+    if(communication?.busy)throw new Error('通信を終了してからキャッシュを削除してください。');
+    await saveBrowser(true,true);
+  };
   $('auto-save').checked = autoSave;
   $('auto-save').onchange = () => { autoSave = $('auto-save').checked; try { localStorage.setItem('mgba-auto-save',String(autoSave)); } catch (_) {} if (autoSave) saveBrowser().catch(()=>{}); };
   $('browser-save-now').onclick = () => saveBrowser(true);

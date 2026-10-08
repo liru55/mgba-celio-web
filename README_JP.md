@@ -79,7 +79,7 @@ Mozilla Public License 2.0。元の著作権表示と第三者ライセンスを
 
 画面倍率は表示設定で50〜200%。offline.jsとsw.jsで準備状況、明示的再保存、アプリキャッシュ削除に対応。キャッシュは期限なし（OSによる削除はあり）、セーブ用IndexedDBと設定は削除しません。
 
-追加機能：WebGLのスキャンライン・LCD・CRTとlibretroのxBRZ Freescale Multipass（原版2パス、shaders内に出典・ライセンス）。十字キーはスライドと斜めに対応し操作設定で従来配置に戻せます。倍速1〜4倍は音声のplaybackRateも同期。画面上の倍速とクイック保存／ロードは設定で表示切替。クイック状態はROMハッシュごとのstate:キーでIndexedDBに保存し、CPU・RAM・通常セーブRAM・RTCを復元します。通常セーブと別枠で1つずつ保持し、ロードは通常セーブRAMも戻します。
+追加機能：WebGLのスキャンライン・LCD・CRTとlibretroのxBRZ Freescale Multipass（原版2パス、shaders内に出典・ライセンス）。十字キーはスライドと斜めに対応し操作設定で従来配置に戻せます。倍速1〜4倍は音声のplaybackRateも同期。画面上の倍速とクイック保存／ロードは設定で表示切替。クイック状態はROMハッシュごとのstate:キーでIndexedDBに保存し、CPU・RAM・通常セーブRAM・RTCを復元します。通常セーブと別枠で5スロットを保持し、スロット1は従来のstate:キーをそのまま使います。ロードは通常セーブRAMも戻します。
 
 倍速・クイック保存／ロードも「操作」→「ボタンの位置を調整」で移動できます。縦横別に端末へ保存し、全画面やサイズ変更時は画面内に収めます。「配置を初期化」で元に戻せます。
 
@@ -109,3 +109,6 @@ USB接続にはGBLink／CelioのUSBシリアル変換器とGBA通信ケーブル
 表示設定に標準・シルバー・パープル、オリジナルのGBA/GB本体風フレーム、Delta互換インポート/エクスポートを追加。`.deltaskin`はZIPのinfo.jsonと画像を読み込み、GBA/GBC識別子、iPhone/iPad・standard/edgeToEdge・縦横、PDF/PNG、独立item画像、extendedEdges、gameScreenFrame/screens、ボタン配列・方向辞書を扱います。menu/quickSave/quickLoad/fastForward/toggleFastForwardを既存操作へ接続します。画面フィルターや他機種の複数画面には対応しません。
 
 imported skinは専用IndexedDBに1つ保持し、元ファイルをそのまま再エクスポートできます。本体風フレームは独自描画のPNGとinfo.jsonをZIP化して書き出します。個人ROM/セーブは含みません。fflate (MIT) と PDF.js (Apache-2.0) はvendorに同梱し、PDF処理は遅延読み込み・eval無効で行います。外部サービスへスキンを送信しません。追加テストはユーザーの指示により省略しています。
+
+### 端末内のROM一覧
+ファイル → この端末のROMで保存・呼び出し・削除できます。自動記憶は任意でオンにできます。専用IndexedDBに保存し、ROMの外部送信は行いません。ROMを削除しても通常セーブ・クイック保存は保持します。

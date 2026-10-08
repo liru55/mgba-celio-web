@@ -6,7 +6,7 @@
   let registration, busy = false;
   function show(result) {
     if (result.error) throw new Error(result.error);
-    status.textContent = result.ready ? '準備完了：機内モードでも起動できます。ROMは端末から選び直してください。' : `未準備（${result.count}/${result.total}）：通信できる場所で「オフライン用に保存・更新」を押してください。`;
+    status.textContent = result.ready ? '準備完了：機内モードでも起動できます。保存済みROMは一覧から、未保存のROMは端末から選べます。' : `未準備（${result.count}/${result.total}）：通信できる場所で「オフライン用に保存・更新」を押してください。`;
   }
   async function request(type) {
     registration ||= await navigator.serviceWorker.register('sw.js');

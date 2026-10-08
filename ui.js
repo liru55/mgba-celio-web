@@ -8,6 +8,13 @@
   const applyTouch=()=>{play.classList.toggle('no-touch',!touch);$('touch-visible').checked=touch;};
   $('touch-visible').onchange=()=>{touch=$('touch-visible').checked;applyTouch();try{localStorage.setItem('mgba-touch-visible',touch);}catch(_){}};applyTouch();
   new MutationObserver(()=>document.body.classList.toggle('ui-loaded',play.classList.contains('has-rom'))).observe(play,{attributes:true,attributeFilter:['class']});
+  let toolbarVisible=true;
+  try{toolbarVisible=localStorage.getItem('mgba-toolbar-visible')!=='false';}catch(_){}
+  const toolbarLabel=document.createElement('label');toolbarLabel.className='row';toolbarLabel.innerHTML='<input id="toolbar-visible" type="checkbox">下の操作メニューを表示';$('panel-display').prepend(toolbarLabel);
+  const hideToolbar=document.createElement('button');hideToolbar.type='button';hideToolbar.id='toolbar-hide';hideToolbar.textContent='⌄';hideToolbar.title='下のメニューを隠す';hideToolbar.setAttribute('aria-label','下のメニューを隠す');document.querySelector('.bar-game').append(hideToolbar);
+  const restoreToolbar=document.createElement('button');restoreToolbar.type='button';restoreToolbar.id='toolbar-restore';restoreToolbar.textContent='メニュー';restoreToolbar.setAttribute('aria-label','下の操作メニューを表示');play.append(restoreToolbar);
+  function applyToolbar(){play.classList.toggle('toolbar-hidden',!toolbarVisible);$('toolbar-visible').checked=toolbarVisible;restoreToolbar.hidden=toolbarVisible;try{localStorage.setItem('mgba-toolbar-visible',String(toolbarVisible));}catch(_){} }
+  hideToolbar.onclick=()=>{toolbarVisible=false;applyToolbar();};restoreToolbar.onclick=()=>{toolbarVisible=true;applyToolbar();};$('toolbar-visible').onchange=()=>{toolbarVisible=$('toolbar-visible').checked;applyToolbar();};applyToolbar();
   function choose(mode){
     for(const type of ['local','online','usb']){$('link-'+type+'-panel').hidden=mode!==type;$('link-choose-'+type).setAttribute('aria-pressed',String(mode===type));}
   }

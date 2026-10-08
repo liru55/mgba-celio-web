@@ -1,7 +1,8 @@
 /* MPL-2.0. Delta ZIP/info.json compatibility and original Celio frame skins. */
 window.createSkins=({m,$,available,onKeys,blocked,action,pulse,onLayout})=>{
   const play=document.querySelector('.play'),viewport=document.querySelector('.screen-viewport'),select=$('skin-select'),status=$('skin-status');
-  const art=document.createElement('canvas'),controls=document.createElement('div');art.className='delta-art';controls.className='delta-controls';play.append(art,controls);
+  const art=document.createElement('canvas'),controls=document.createElement('div');art.className='delta-art';controls.className='delta-controls';const stage=document.createElement('div');stage.className='skin-stage';stage.hidden=true;stage.append(art,controls);play.append(stage);
+  function mount(active){stage.hidden=!active;if(active){if(viewport.parentElement!==stage)stage.prepend(viewport);}else if(viewport.parentElement===stage)play.prepend(viewport);}
   const inputBits={a:0,b:1,select:2,start:3,right:4,left:5,up:6,down:7,r:8,l:9};
   const actions={menu:'menu',quickSave:'save',quickLoad:'load',toggleFastForward:'speed',fastForward:'holdSpeed'};
   let pdfReady;
@@ -53,10 +54,10 @@ window.createSkins=({m,$,available,onKeys,blocked,action,pulse,onLayout})=>{
   }
   function item(inputs,x,y,w,h){return {inputs,frame:{x,y,width:w,height:h}};}
   function frameRepresentation(type,orientation){
-    const landscape=orientation==='landscape',width=landscape?800:414,height=landscape?360:650;
+    const landscape=orientation==='landscape',width=landscape?800:414,height=landscape?390:650;
     const screen=landscape?{x:210,y:46,width:380,height:253}:{x:35,y:62,width:344,height:type==='gb-frame'?309:229};
     const dy=type==='gb-frame'?410:377;
-    const items=landscape?[item({up:'up',down:'down',left:'left',right:'right'},33,140,140,140),item(['a'],693,138,62,62),item(['b'],620,191,62,62),item(['l'],29,30,130,42),item(['r'],641,30,130,42),item(['select'],294,309,78,28),item(['start'],430,309,78,28),item(['menu'],16,303,64,32)]:[item({up:'up',down:'down',left:'left',right:'right'},30,dy,142,142),item(['a'],315,dy+12,64,64),item(['b'],235,dy+56,64,64),item(['l'],25,15,112,34),item(['r'],277,15,112,34),item(['select'],120,575,72,30),item(['start'],220,575,72,30),item(['menu'],16,603,60,30)];
+    const items=landscape?[item({up:'up',down:'down',left:'left',right:'right'},33,140,140,140),item(['a'],693,138,62,62),item(['b'],620,191,62,62),item(['l'],29,30,130,42),item(['r'],641,30,130,42),item(['select'],294,345,78,28),item(['start'],430,345,78,28),item(['menu'],16,345,64,32)]:[item({up:'up',down:'down',left:'left',right:'right'},30,dy,142,142),item(['a'],315,dy+12,64,64),item(['b'],235,dy+56,64,64),item(['l'],25,15,112,34),item(['r'],277,15,112,34),item(['select'],120,575,72,30),item(['start'],220,575,72,30),item(['menu'],16,603,60,30)];
     return {mappingSize:{width,height},gameScreenFrame:screen,items,assets:{},extendedEdges:{top:8,bottom:8,left:5,right:5},_builtin:type};
   }
   function drawFrame(r){
@@ -76,25 +77,20 @@ window.createSkins=({m,$,available,onKeys,blocked,action,pulse,onLayout})=>{
   function place(){
     if(!representation||!play.classList.contains('delta-skin')||applying)return;applying=true;
     try{
-      const r=representation,size=r.mappingSize,toolbar=play.querySelector('.emulator-toolbar').getBoundingClientRect().height,w=play.clientWidth,fullscreen=play.classList.contains('immersive'),sf=screenFrame(r),gameAspect=$('screen').width/$('screen').height||1.5;
+      const r=representation,size=r.mappingSize,fullscreen=play.classList.contains('immersive'),sf=screenFrame(r);
+      const w=stage.clientWidth,gameAspect=$('screen').width/$('screen').height||1.5;
       if(w<=0)return;
-      let areaWidth=w,areaHeight=w*size.height/size.width,top=0,left=0;
-      const paddingTop=fullscreen?48:0;
-      if(fullscreen){const availableHeight=Math.max(80,play.clientHeight-toolbar-paddingTop);if(sf){areaWidth=Math.min(w,availableHeight*size.width/size.height);areaHeight=areaWidth*size.height/size.width;top=paddingTop+(availableHeight-areaHeight)/2;left=(w-areaWidth)/2;}else{areaHeight=Math.min(areaHeight,availableHeight*.48);areaWidth=areaHeight*size.width/size.height;left=(w-areaWidth)/2;top=paddingTop+availableHeight-areaHeight;}}
-      else{
-        // Fit the whole console, not just its width: portrait skins can be very tall.
-        const documentTop=play.getBoundingClientRect().top+scrollY;
-        const availableHeight=Math.max(160,innerHeight-documentTop-toolbar-16);
-        const naturalHeight=areaHeight+(sf?0:w/gameAspect);
-        const scale=Math.min(1,availableHeight/naturalHeight);
-        areaWidth=w*scale;areaHeight=areaWidth*size.height/size.width;
-        left=(w-areaWidth)/2;top=sf?0:areaWidth/gameAspect;
-        play.style.setProperty('--skin-height',(top+areaHeight)+'px');
-      }
-      for(const el of [art,controls]){el.style.left=left+'px';el.style.top=top+'px';el.style.width=areaWidth+'px';el.style.height=areaHeight+'px';}
-      let f;
-      if(sf)f={x:left+sf.x/size.width*areaWidth,y:top+sf.y/size.height*areaHeight,width:sf.width/size.width*areaWidth,height:sf.height/size.height*areaHeight};
-      else f={x:fullscreen?0:left,y:paddingTop,width:fullscreen?w:areaWidth,height:fullscreen?Math.max(1,top-paddingTop):top};
+      const header=fullscreen?48:0;
+      const toolbar=play.querySelector('.emulator-toolbar').getBoundingClientRect().height;
+      const bottom=Math.max(16,parseFloat(getComputedStyle(document.body).paddingBottom)||0);
+      const availableHeight=fullscreen?Math.max(1,stage.clientHeight-header):Math.max(160,innerHeight-(play.getBoundingClientRect().top+scrollY)-toolbar-bottom-2);
+      const naturalHeight=w*size.height/size.width+(sf?0:w/gameAspect);
+      const scale=Math.min(1,availableHeight/naturalHeight),areaWidth=w*scale,areaHeight=areaWidth*size.height/size.width;
+      const screenHeight=sf?0:areaWidth/gameAspect,totalHeight=screenHeight+areaHeight;
+      const left=(w-areaWidth)/2,top=header+(fullscreen?(availableHeight-totalHeight)/2:0);
+      if(!fullscreen)play.style.setProperty('--skin-height',totalHeight+'px');
+      for(const el of [art,controls])Object.assign(el.style,{left:left+'px',top:(top+screenHeight)+'px',width:areaWidth+'px',height:areaHeight+'px'});
+      const f=sf?{x:left+sf.x/size.width*areaWidth,y:top+sf.y/size.height*areaHeight,width:sf.width/size.width*areaWidth,height:sf.height/size.height*areaHeight}:{x:left,y:top,width:areaWidth,height:screenHeight};
       Object.assign(viewport.style,{left:f.x+'px',top:f.y+'px',width:f.width+'px',height:f.height+'px'});
     }finally{applying=false;}
   }
@@ -109,15 +105,15 @@ window.createSkins=({m,$,available,onKeys,blocked,action,pulse,onLayout})=>{
     }
   }
   async function apply(){
-    const ticket=++token;release();$('skin-export').disabled=true;play.classList.remove('delta-skin');representation=null;viewport.removeAttribute('style');art.hidden=controls.hidden=true;document.documentElement.dataset.skin=mode;
+    const ticket=++token;release();$('skin-export').disabled=true;play.classList.remove('delta-skin');mount(false);representation=null;viewport.removeAttribute('style');art.hidden=controls.hidden=true;document.documentElement.dataset.skin=mode;
     if(!['gba-frame','gb-frame','delta'].includes(mode)){$('skin-export').disabled=true;onLayout();return;}
     try{
       if(mode==='delta'&&!imported)throw Error('先にDeltaスキンを読み込んでください');
       if(mode==='delta'&&available()){const gba=m._web_platform()===0;if(gba!==imported.info.gameTypeIdentifier.endsWith('.gba'))throw Error('ROMとスキンのゲーム機種が異なります');}
       const r=mode==='delta'?chooseRepresentation(imported.info):frameRepresentation(mode,orient()),image=await artwork(r,imported);if(ticket!==token)return;
-      art.width=image.width;art.height=image.height;art.getContext('2d').drawImage(image,0,0);representation=r;makeControls(r);art.hidden=controls.hidden=false;play.classList.add('delta-skin');lastOrientation=orient();place();$('skin-export').disabled=false;onLayout();requestAnimationFrame(place);
+      art.width=image.width;art.height=image.height;art.getContext('2d').drawImage(image,0,0);representation=r;makeControls(r);art.hidden=controls.hidden=false;play.classList.add('delta-skin');mount(true);lastOrientation=orient();place();$('skin-export').disabled=false;onLayout();requestAnimationFrame(place);
       report((mode==='delta'?imported.info.name||'Deltaスキン':mode==='gba-frame'?'GBA本体風':'GB本体風')+'を適用しました。スキン使用中はファイルの配置を使います。');
-    }catch(e){if(ticket===token){play.classList.remove('delta-skin');onLayout();report(e.message+'。標準の操作ボタンを表示します。');}}
+    }catch(e){if(ticket===token){play.classList.remove('delta-skin');mount(false);viewport.removeAttribute('style');representation=null;art.hidden=controls.hidden=true;onLayout();report(e.message+'。標準の操作ボタンを表示します。');}}
   }
   async function setMode(value){mode=value;select.value=mode;if(['gba-frame','gb-frame','delta'].includes(mode)&&$('touch-visible')&&!$('touch-visible').checked){$('touch-visible').checked=true;$('touch-visible').dispatchEvent(new Event('change'));}try{localStorage.setItem('mgba-skin',mode);}catch(_){}await apply();}
   select.onchange=()=>setMode(select.value);
@@ -127,12 +123,12 @@ window.createSkins=({m,$,available,onKeys,blocked,action,pulse,onLayout})=>{
   function suppressSkin(){
     if(!representation)return;
     const hidden=document.body.classList.contains('clean-view')||play.classList.contains('touch-hidden')||play.classList.contains('no-touch');
-    play.classList.toggle('delta-skin',!hidden);art.hidden=controls.hidden=hidden;
+    play.classList.toggle('delta-skin',!hidden);mount(!hidden);art.hidden=controls.hidden=hidden;
     if(hidden){release();viewport.removeAttribute('style');}else place();
   }
   const classObserver=new MutationObserver(()=>suppressSkin());
   classObserver.observe(play,{attributes:true,attributeFilter:['class']});classObserver.observe(document.body,{attributes:true,attributeFilter:['class']});
-  new ResizeObserver(()=>requestAnimationFrame(place)).observe(play);addEventListener('resize',()=>{if(orient()!==lastOrientation&&representation)apply();else place();});
+  const resizeObserver=new ResizeObserver(()=>requestAnimationFrame(place));resizeObserver.observe(play);resizeObserver.observe(stage);addEventListener('resize',()=>{if(orient()!==lastOrientation&&representation)apply();else place();});
   addEventListener('blur',release);document.addEventListener('visibilitychange',()=>{if(document.hidden)release();});
   play.addEventListener('pointerdown',()=>{if(blocked())release();},{capture:true});
   try{mode=localStorage.getItem('mgba-skin')||'dark';}catch(_){}if(![...select.options].some(o=>o.value===mode))mode='dark';select.value=mode;

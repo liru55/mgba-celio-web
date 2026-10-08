@@ -31,7 +31,7 @@
   $('touch-vibration').onchange=()=>{vibrationEnabled=$('touch-vibration').checked;try{localStorage.setItem('mgba-touch-vibration',String(vibrationEnabled));}catch(_){}if(vibrationEnabled)pulseTouch();};
   let volume = 1, muted = false;
   try { const sound = JSON.parse(localStorage.getItem('mgba-sound')); if (sound) { volume = Math.max(0,Math.min(1,Number(sound.volume) || 0)); muted = !!sound.muted; } } catch (_) {}
-  let communication = null, romBytes = null, pixelBase = 0, skins=null,skinKeys=0,skinHoldSpeed=null;
+  let communication = null, romBytes = null, pixelBase = 0, skins=null,romLibrary=null,skinKeys=0,skinHoldSpeed=null;
   const memoryViewer=createMemoryViewer({m,$,available:()=>loaded&&!romLoading&&!communication?.busy});
   let romKey = '', romLoading = false, loadSerial = 0, autoSave = true;
   try { autoSave = localStorage.getItem('mgba-auto-save') !== 'false'; } catch (_) {}
@@ -77,8 +77,11 @@
   $('welcome-open').disabled = false; $('welcome-open').onclick = () => $('open').click();
   $('open').disabled = false; status.textContent = 'ROMを選んで開始してください';
   $('open').onclick = () => { enableAudio().catch(() => {}); $('rom').click(); };
-  $('rom').onchange = async () => {
-    const file = $('rom').files[0]; if (!file) return;
+  $('rom').onchange = () => loadROM($('rom').files[0]);
+  async function loadROM(file) {
+    if (!file || romLoading || quickBusy || communication?.busy) return;
+    const pendingSave=saveBrowser();romLoading=true;await pendingSave;
+    if ($('settings').open) $('settings').close();
     paused = true; release(); romLoading = true; quickState = null; $('quick-state-save').disabled = $('quick-state-load').disabled = true; const serial = ++loadSerial;
     status.textContent = 'ROMを読み込み中…';
     try {
@@ -106,11 +109,11 @@
           } else $('browser-save-status').textContent = 'このROMの保存はまだありません。';
         } catch (_) { $('browser-save-status').textContent = 'ブラウザ保存を利用できません。ファイルに書き出してください。'; }
       }
-      try { quickState = await localSaves.read('state:'+romKey); } catch (_) {}
+      await readQuickSlots();
       if (serial !== loadSerial) return;
       paused = false; $('pause').textContent = '一時停止'; status.textContent = name;
     } catch (e) { status.textContent = e.message; }
-    romLoading = false; updatePauseBanner();
+    romLoading = false; updatePauseBanner();showQuickSlot();
     for (const id of ['pause','reset','export','import']) $(id).disabled = !loaded;
     $('import-main').disabled = !loaded; $('screenshot-save').disabled = !loaded; $('quick-save').disabled = !loaded; $('cheat-add').disabled = !loaded;
     $('quick-state-save').disabled = !loaded; $('quick-state-load').disabled = !loaded || !quickState;
@@ -118,8 +121,8 @@
     $('rom').value = '';
     memoryViewer.onGame();
     skins?.onGame();
-    if (loaded) await communication?.onGame();
-  };
+    if (loaded) { await communication?.onGame(); await romLibrary?.onGame(); }
+  }
   $('pause').onclick = togglePause;
   $('reset').onclick = () => { if (loaded) { m._web_reset(); release(); } };
   $('export').onclick = () => {
@@ -447,7 +450,28 @@
     cheats.push({name:title,enabled:true}); renderCheats(); $('cheat-code').value = ''; $('cheat-name').value = ''; $('cheat-status').textContent = '追加しました。チェックで有効・無効を切り替えられます。';
   };
   const localSaves = new LocalSaveStore();
-  let quickState = null, quickBusy = false, quickMessageTimer;
+  let quickState = null, quickStates = [], quickSlot = 1, quickBusy = false, quickMessageTimer;
+  const quickKey=(key,slot)=>'state:'+key+(slot===1?'':':'+slot);
+  function showQuickSlot(){
+    quickState=quickStates[quickSlot-1]||null;
+    const unavailable=!loaded||romLoading||quickBusy||!!communication?.busy;
+    $('quick-slot').value=quickSlot;$('quick-slot').disabled=unavailable;
+    $('quick-state-save').textContent='保存 '+quickSlot;$('quick-state-load').textContent='ロード '+quickSlot;
+    $('quick-state-save').disabled=$('slot-save').disabled=unavailable;
+    $('quick-state-load').disabled=$('slot-load').disabled=$('slot-delete').disabled=unavailable||!quickState;
+    $('quick-slot-status').textContent=quickState?'スロット'+quickSlot+'：'+new Date(quickState.updated).toLocaleString('ja-JP'):'スロット'+quickSlot+'：空き';
+    for(let i=1;i<=5;i++)$('quick-slot').options[i-1].textContent='スロット'+i+(quickStates[i-1]?'（保存済み）':'（空き）');
+  }
+  async function readQuickSlots(){
+    const key=romKey,serial=loadSerial;let slot=1;
+    try{slot=Number(localStorage.getItem('mgba-quick-slot:'+key))||1;}catch(_){}
+    const states=await Promise.all(Array.from({length:5},(_,i)=>localSaves.read(quickKey(key,i+1)).catch(()=>null)));
+    if(serial!==loadSerial)return;
+    quickSlot=Number.isInteger(slot)&&slot>=1&&slot<=5?slot:1;quickStates=states;showQuickSlot();
+  }
+  $('quick-slot').onchange=()=>{if(quickBusy||communication?.busy||romLoading)return;quickSlot=Number($('quick-slot').value);try{localStorage.setItem('mgba-quick-slot:'+romKey,String(quickSlot));}catch(_){}showQuickSlot();};
+  $('slot-save').onclick=()=>$('quick-state-save').click();$('slot-load').onclick=()=>$('quick-state-load').click();
+  $('slot-delete').onclick=async()=>{if(!loaded||romLoading||quickBusy||communication?.busy)return;quickBusy=true;const key=romKey,slot=quickSlot,serial=loadSerial;showQuickSlot();try{await localSaves.remove(quickKey(key,slot));if(serial===loadSerial){quickStates[slot-1]=null;quickMessage('スロット'+slot+'を削除しました');}}catch(e){quickMessage('削除できませんでした');}finally{quickBusy=false;showQuickSlot();}};
   let showQuick = true;
   try { showQuick = localStorage.getItem('mgba-quick-controls') !== 'false'; } catch (_) {}
   function applyQuickControls() { $('show-quick').checked = showQuick; $('quick-actions').hidden = !showQuick; }
@@ -455,26 +479,26 @@
   applyQuickControls();
   function quickMessage(text) { $('quick-message').textContent = text; $('quick-message').hidden = false; clearTimeout(quickMessageTimer); quickMessageTimer = setTimeout(() => $('quick-message').hidden = true,4000); }
   $('quick-state-save').onclick = async () => {
-    if (!loaded || romLoading || quickBusy) return;
-    quickBusy = true; const key = romKey, serial = loadSerial;
+    if (!loaded || romLoading || quickBusy || communication?.busy) return;
+    quickBusy = true; const key = romKey, serial = loadSerial, slot = quickSlot;showQuickSlot();
     try {
       const size = m._web_state_export(); if (!size) throw new Error('途中の状態を保存できませんでした');
       const pointer = m._web_state_data();
       const saved = {bytes:m.HEAPU8.slice(pointer,pointer+size).buffer,picture:image.data.slice().buffer,updated:Date.now()};
-      quickState = saved; $('quick-state-load').disabled = false;
-      try { await localSaves.write('state:'+key,saved); if (serial === loadSerial) quickMessage('クイック保存しました（このROMに1つ）'); }
+      quickStates[slot-1] = saved;quickState = saved;
+      try { await localSaves.write(quickKey(key,slot),saved); if (serial === loadSerial) quickMessage('スロット'+slot+'に保存しました'); }
       catch (_) { if (serial === loadSerial) quickMessage('今回は保存しました。ブラウザへは保存できませんでした。'); }
     } catch (error) { quickMessage(error.message); }
-    finally { quickBusy = false; }
+    finally { quickBusy = false; showQuickSlot(); }
   };
   $('quick-state-load').onclick = () => {
-    if (!loaded || romLoading || quickBusy || !quickState) return;
+    if (!loaded || romLoading || quickBusy || communication?.busy || !quickState) return;
     try {
       if (!upload(new Uint8Array(quickState.bytes),(p,n)=>m._web_state_import(p,n))) throw new Error('クイック保存を読み込めませんでした');
       release(); for (const source of audioSources) { try { source.stop(); } catch (_) {} } audioSources.clear();
       m._web_audio_read();
       if (quickState.picture?.byteLength === image.data.byteLength) { image.data.set(new Uint8Array(quickState.picture)); ctx.putImageData(image,0,0); screenEffects.render(image); }
-      quickMessage('クイック保存の時点に戻りました');
+      quickMessage('スロット'+quickSlot+'の時点に戻りました');
     } catch (error) { quickMessage(error.message); }
   };
 
@@ -561,7 +585,7 @@
       if (busy) {
         $('game-speed').value=1; $('game-speed').onchange();
         if (!disabledBeforeLink.size) {
-          for(const id of ['pause','reset','import','import-main','open','welcome-open','cheat-add','quick-state-save','quick-state-load','speed-toggle','game-speed','browser-save-now','browser-save-delete','auto-save','pad-edit']) {
+          for(const id of ['pause','reset','import','import-main','open','welcome-open','cheat-add','quick-state-save','quick-state-load','speed-toggle','game-speed','browser-save-now','browser-save-delete','auto-save','pad-edit','quick-slot','slot-save','slot-load','slot-delete']) {
             disabledBeforeLink.set(id,$(id).disabled); $(id).disabled=true;
           }
           for(const input of $('cheat-list').querySelectorAll('input,button')) input.disabled=true;
@@ -577,6 +601,7 @@
       if (running) enableAudio().catch(()=>{});
     }
   });
+  romLibrary=createROMLibrary({$,getGame:()=>({loaded,bytes:romBytes,key:romKey,name}),load:loadROM,open:()=>openSettings('save'),blocked:()=>romLoading||quickBusy||!!communication?.busy});
   skins=createSkins({m,$,available:()=>loaded,
     onKeys:mask=>{skinKeys=mask;updateKeys();if(mask)enableAudio().catch(()=>{});},
     blocked:()=>!loaded||(!communication?.busy&&paused)||menuOpen||editing||document.hidden,

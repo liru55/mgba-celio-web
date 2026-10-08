@@ -81,6 +81,7 @@ canvas:fullscreen{
   gap:18px
 }
 .dpad{
+  position:relative;
   display:grid;
   grid-template-columns:repeat(3,48px);
   grid-template-rows:repeat(3,48px);

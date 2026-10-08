@@ -235,6 +235,9 @@
   function applyLayout() {
     play.classList.toggle('overlay', layout.overlay || editing);
     play.classList.toggle('editing', editing);
+    // Detach movable actions from the toolbar while the toolbar is hidden.
+    for (const id of ['quick-action-speed','quick-action-save','quick-action-load'])
+      (editing ? play : $('quick-actions')).append($(id));
     play.style.setProperty('--pad-scale', layout.scale);
     play.style.setProperty('--pad-opacity', layout.opacity);
     $('overlay').checked = layout.overlay;
@@ -269,7 +272,9 @@
   $('pad-edit').onclick = () => { editing = true; padKeys = 0; release(); if (loaded && !paused) togglePause(); applyLayout(); $('settings').close(); play.scrollIntoView({block:'center'}); };
   $('fullscreen-layout').onclick = () => openSettings('controls');
   $('edit-done').onclick = () => { editing = false; applyLayout(); openSettings('controls'); };
-  $('pad-default').onclick = () => { layout = {overlay:false,scale:.75,opacity:.8,positions:{},landscapePositions:{}}; editing = false; release(); applyLayout(); storeLayout(); };
+  function resetLayout(keepEditing=false) { layout = {overlay:false,scale:.75,opacity:.8,positions:{},landscapePositions:{}}; editing = keepEditing; release(); applyLayout(); storeLayout(); }
+  $('pad-default').onclick = () => resetLayout();
+  $('edit-reset').onclick = () => resetLayout(true);
   for (const group of groups) {
     const el = groupElement(group);
     el.addEventListener('click', e => { if (editing) { e.preventDefault(); e.stopImmediatePropagation(); } },true);

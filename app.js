@@ -31,7 +31,7 @@
   $('touch-vibration').onchange=()=>{vibrationEnabled=$('touch-vibration').checked;try{localStorage.setItem('mgba-touch-vibration',String(vibrationEnabled));}catch(_){}if(vibrationEnabled)pulseTouch();};
   let volume = 1, muted = false;
   try { const sound = JSON.parse(localStorage.getItem('mgba-sound')); if (sound) { volume = Math.max(0,Math.min(1,Number(sound.volume) || 0)); muted = !!sound.muted; } } catch (_) {}
-  let communication = null, romBytes = null, pixelBase = 0;
+  let communication = null, romBytes = null, pixelBase = 0, skins=null,skinKeys=0,skinHoldSpeed=null;
   const memoryViewer=createMemoryViewer({m,$,available:()=>loaded&&!romLoading&&!communication?.busy});
   let romKey = '', romLoading = false, loadSerial = 0, autoSave = true;
   try { autoSave = localStorage.getItem('mgba-auto-save') !== 'false'; } catch (_) {}
@@ -54,8 +54,8 @@
   let padKeys = 0, menuOpen = false, resumeAfterMenu = false;
   const held = new Set(), touches = new Map(), dpadPointers = new Set();
   const mapping = {KeyZ:0,KeyX:1,ShiftLeft:2,ShiftRight:2,Enter:3,ArrowRight:4,ArrowLeft:5,ArrowUp:6,ArrowDown:7,KeyS:8,KeyA:9};
-  function updateKeys() { keys = padKeys; for (const code of held) keys |= 1 << mapping[code]; for (const mask of touches.values()) keys |= mask; }
-  function release() { document.querySelectorAll('.pressed').forEach(b => b.classList.remove('pressed')); held.clear(); touches.clear(); dpadPointers.clear(); updateKeys(); clock = 0; nextAudio = 0; }
+  function updateKeys() { keys = padKeys | skinKeys; for (const code of held) keys |= 1 << mapping[code]; for (const mask of touches.values()) keys |= mask; }
+  function release() { document.querySelectorAll('.pressed').forEach(b => b.classList.remove('pressed')); held.clear(); touches.clear(); dpadPointers.clear(); skins?.release(); skinKeys=0; updateKeys(); clock = 0; nextAudio = 0; }
   async function enableAudio() {
     audioContext ||= new (window.AudioContext || window.webkitAudioContext)();
     if (!audioGain) { audioGain = audioContext.createGain(); audioGain.connect(audioContext.destination); audioGain.gain.value = muted ? 0 : volume; }
@@ -117,6 +117,7 @@
     $('browser-save-now').disabled = !loaded; $('browser-save-delete').disabled = !loaded;
     $('rom').value = '';
     memoryViewer.onGame();
+    skins?.onGame();
     if (loaded) await communication?.onGame();
   };
   $('pause').onclick = togglePause;
@@ -269,7 +270,7 @@
     }
     $('edit-bar').hidden = !editing;
     requestAnimationFrame(placeEditor);
-    $('pad-edit').disabled = !!communication?.busy;
+    $('pad-edit').disabled = !!communication?.busy || !!skins?.active();
     $('pad-edit').textContent = editing ? '位置調整を終える' : 'ボタンの位置を調整';
     for (const group of groups) {
       const positions = matchMedia('(orientation:landscape)').matches ? layout.landscapePositions : layout.positions;
@@ -574,6 +575,19 @@
       document.body.classList.toggle('link-mode',busy);
       applyLayout(); updatePauseBanner();
       if (running) enableAudio().catch(()=>{});
+    }
+  });
+  skins=createSkins({m,$,available:()=>loaded,
+    onKeys:mask=>{skinKeys=mask;updateKeys();if(mask)enableAudio().catch(()=>{});},
+    blocked:()=>!loaded||(!communication?.busy&&paused)||menuOpen||editing||document.hidden,
+    pulse:pulseTouch,onLayout:applyLayout,
+    action:type=>{
+      if(type==='menu')openSettings();
+      if(type==='save')$('quick-state-save').click();
+      if(type==='load')$('quick-state-load').click();
+      if(type==='speed')$('speed-toggle').click();
+      if(type==='holdSpeed'&&!communication?.busy&&skinHoldSpeed===null){skinHoldSpeed=speed;$('game-speed').value=fastSpeed;$('game-speed').onchange();}
+      if(type==='releaseSpeed'&&skinHoldSpeed!==null){const original=skinHoldSpeed;skinHoldSpeed=null;$('game-speed').value=original;$('game-speed').onchange();}
     }
   });
   function drawFrame() {

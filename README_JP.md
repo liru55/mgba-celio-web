@@ -102,3 +102,10 @@ USB接続にはGBLink／CelioのUSBシリアル変換器とGBA通信ケーブル
 
 
 メモリビューアはROM起動後、プレイ画面の下に折りたたみ表示します。GBA/GB/GBCの領域選択、16進アドレス指定、256バイト単位の移動、ASCII表示、前回からの変更数、0.5秒の自動更新に対応。読み取り専用でrawRead8を使い、通信中の読み出しは停止します。
+
+
+## スキン
+
+表示設定に標準・シルバー・パープル、オリジナルのGBA/GB本体風フレーム、Delta互換インポート/エクスポートを追加。`.deltaskin`はZIPのinfo.jsonと画像を読み込み、GBA/GBC識別子、iPhone/iPad・standard/edgeToEdge・縦横、PDF/PNG、独立item画像、extendedEdges、gameScreenFrame/screens、ボタン配列・方向辞書を扱います。menu/quickSave/quickLoad/fastForward/toggleFastForwardを既存操作へ接続します。画面フィルターや他機種の複数画面には対応しません。
+
+imported skinは専用IndexedDBに1つ保持し、元ファイルをそのまま再エクスポートできます。本体風フレームは独自描画のPNGとinfo.jsonをZIP化して書き出します。個人ROM/セーブは含みません。fflate (MIT) と PDF.js (Apache-2.0) はvendorに同梱し、PDF処理は遅延読み込み・eval無効で行います。外部サービスへスキンを送信しません。追加テストはユーザーの指示により省略しています。

@@ -1297,3 +1297,18 @@ body:not(.ui-loaded) .memory-panel,.clean-view .memory-panel { display:none; }
   -webkit-touch-callout:none;
   overscroll-behavior:contain;
 }
+:root[data-skin="silver"] { --bg:#14181b; --surface:#252b31; --surface-raised:#333b43; --border:#505d67; --primary:#a5d3ee; --primary-soft:#233f50; }
+:root[data-skin="purple"] { --bg:#151322; --surface:#242137; --surface-raised:#333048; --border:#4d4769; --primary:#c0b5f2; --primary-soft:#3c345c; }
+.play.has-rom.delta-skin:not(.immersive):not(.editing) { height:auto; min-height:0; max-height:none; grid-template-rows:var(--skin-height,600px) auto!important; }
+.play.has-rom.delta-skin.immersive { grid-template-rows:minmax(0,1fr) auto!important; }
+.play.delta-skin .gamepad { display:none!important; }
+.play.delta-skin .screen-viewport { position:absolute; z-index:2; padding:0!important; aspect-ratio:auto!important; min-height:0; }
+.delta-art,.delta-controls { position:absolute; display:block; }
+.delta-art { z-index:1; pointer-events:none; }
+.delta-controls { z-index:8; pointer-events:none; touch-action:none; }
+.delta-controls .delta-hit { position:absolute; pointer-events:auto; touch-action:none; background:transparent; border:0; border-radius:6px; padding:0; min-height:0; min-width:0; box-shadow:none; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
+.delta-controls .delta-hit.pressed { background:rgba(255,255,255,.13); }
+.play:not(.has-rom) .delta-art,.play:not(.has-rom) .delta-controls,.clean-view .delta-art,.clean-view .delta-controls { display:none!important; }
+.play.delta-skin .emulator-toolbar { z-index:9; }
+
+.play.delta-skin .quick-action.custom-position { position:static; transform:none; max-width:none; }

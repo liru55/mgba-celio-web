@@ -1,5 +1,5 @@
-const CACHE = 'mgba-celio-web-v24';
-const FILES = ['./','index.html','app.js','ui.js','memory-viewer.js','celio-serial.js','link-session.js','offline.js','screen-effects.js','shaders/xbrz-pass0.glsl','shaders/xbrz-pass1.glsl','controller.js','storage.js','styles.css','help.html','mgba.js','mgba.wasm','manifest.webmanifest','icon-256.png','icon-512.png'];
+const CACHE = 'mgba-celio-web-v25';
+const FILES = ['./','index.html','app.js','ui.js','skins.js','vendor/fflate.min.js','vendor/pdf.min.js','vendor/pdf.worker.min.js','memory-viewer.js','celio-serial.js','link-session.js','offline.js','screen-effects.js','shaders/xbrz-pass0.glsl','shaders/xbrz-pass1.glsl','controller.js','storage.js','styles.css','help.html','mgba.js','mgba.wasm','manifest.webmanifest','icon-256.png','icon-512.png'];
 async function prepare() {
   const cache = await caches.open(CACHE);
   // No expiry: keep the complete app until the user clears it or the browser evicts it.

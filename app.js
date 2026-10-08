@@ -20,6 +20,7 @@
   const audioSources = new Set();
   let volume = 1, muted = false;
   try { const sound = JSON.parse(localStorage.getItem('mgba-sound')); if (sound) { volume = Math.max(0,Math.min(1,Number(sound.volume) || 0)); muted = !!sound.muted; } } catch (_) {}
+  let communication = null, romBytes = null, pixelBase = 0;
   let romKey = '', romLoading = false, loadSerial = 0, autoSave = true;
   try { autoSave = localStorage.getItem('mgba-auto-save') !== 'false'; } catch (_) {}
   let speed = 1;
@@ -53,9 +54,9 @@
     if (!p) throw new Error('メモリが足りません');
     try { m.HEAPU8.set(bytes, p); return call(p, bytes.length); } finally { m._free(p); }
   }
-  function updatePauseBanner() { $('pause-banner').hidden = !loaded || !paused || menuOpen || editing || romLoading; }
+  function updatePauseBanner() { $('pause-banner').hidden = communication?.busy || !loaded || !paused || menuOpen || editing || romLoading; }
   function togglePause() {
-    if (!loaded) return;
+    if (!loaded || communication?.busy) return;
     paused = !paused; release();
     $('pause').textContent = paused ? '再開' : '一時停止';
     status.textContent = paused ? '一時停止中' : name; updatePauseBanner();
@@ -76,6 +77,7 @@
       romKey = Array.from(new Uint8Array(hash),b=>b.toString(16).padStart(2,'0')).join('');
       loaded = !!upload(bytes, (p,n) => m._web_load(p,n));
       if (!loaded) throw new Error('対応するGBA / GB / GBC ROMを選んでください');
+      romBytes = bytes;
       document.querySelector('.play').classList.add('has-rom');
       name = file.name; canvas.width = m._web_width(); canvas.height = m._web_height();
       canvas.style.aspectRatio = `${canvas.width}/${canvas.height}`;
@@ -101,6 +103,7 @@
     $('quick-state-save').disabled = !loaded; $('quick-state-load').disabled = !loaded || !quickState;
     $('browser-save-now').disabled = !loaded; $('browser-save-delete').disabled = !loaded;
     $('rom').value = '';
+    if (loaded) await communication?.onGame();
   };
   $('pause').onclick = togglePause;
   $('reset').onclick = () => { if (loaded) { m._web_reset(); release(); } };
@@ -178,7 +181,7 @@
     if (resumeAfterMenu && loaded && paused && !editing && !document.hidden) togglePause();
     resumeAfterMenu = false; updatePauseBanner();
   });
-  $('go-display').onclick = () => selectTab('display');
+  $('go-display').onclick = () => selectTab('controls');
   addEventListener('keydown', e => {
     if (menuOpen || editing || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
     const mod = e.ctrlKey || e.metaKey;
@@ -202,10 +205,20 @@
   }
   const play = document.querySelector('.play');
   play.append($('edit-bar'));
-  const groups = ['dpad','ab','shoulders','system','quick-actions'];
-  const groupElement = group => group === 'quick-actions' ? $('quick-actions') : play.querySelector('.'+group);
+  const groups = ['dpad','ab','shoulders','system','quick-action-speed','quick-action-save','quick-action-load'];
+  const groupElement = group => group.startsWith('quick-') ? $(group) : play.querySelector('.'+group);
   let layout = {overlay:true,scale:.75,opacity:.55,positions:{},landscapePositions:{}}, editing = false, drag;
   try { const saved = JSON.parse(localStorage.getItem('mgba-touch-layout')); if (saved) layout = {...layout,...saved}; } catch (_) {}
+  // Migrate the previous shared toolbar position without losing the saved layout.
+  for (const key of ['positions','landscapePositions']) {
+    const old = layout[key]?.['quick-actions'];
+    if (old) {
+      const width = Math.max(320,play.clientWidth);
+      for(const [id,offset] of [['quick-action-speed',-110],['quick-action-save',0],['quick-action-load',100]])
+        layout[key][id] ||= {x:old.x+offset/width*100,y:old.y};
+      delete layout[key]['quick-actions'];
+    }
+  }
   function applyLayout() {
     play.classList.toggle('overlay', layout.overlay || play.classList.contains('immersive'));
     play.classList.toggle('editing', editing);
@@ -215,12 +228,12 @@
     $('pad-scale').value = layout.scale; $('pad-opacity').value = layout.opacity;
     $('scale-value').value = Math.round(layout.scale*100)+'%'; $('opacity-value').value = Math.round(layout.opacity*100)+'%';
     $('edit-bar').hidden = !editing;
-    $('pad-edit').disabled = false;
-    $('pad-edit').textContent = editing ? '位置調整を終える' : '位置を調整';
+    $('pad-edit').disabled = !!communication?.busy;
+    $('pad-edit').textContent = editing ? '位置調整を終える' : 'ボタンの位置を調整';
     for (const group of groups) {
       const positions = matchMedia('(orientation:landscape)').matches ? layout.landscapePositions : layout.positions;
       const el = groupElement(group), pos = positions?.[group];
-      const quick = group === 'quick-actions';
+      const quick = group.startsWith('quick-');
       const movable = quick || play.classList.contains('overlay');
       el.style.left = movable && pos ? pos.x+'%' : '';
       el.style.top = movable && pos ? pos.y+'%' : '';
@@ -241,14 +254,14 @@
   $('overlay').onchange = () => { layout.overlay = $('overlay').checked; editing = false; release(); applyLayout(); storeLayout(); };
   for (const [id,key] of [['pad-scale','scale'],['pad-opacity','opacity']]) $(id).oninput = () => { layout[key] = +$(id).value; applyLayout(); storeLayout(); };
   $('pad-edit').onclick = () => { editing = true; padKeys = 0; release(); if (loaded && !paused) togglePause(); applyLayout(); $('settings').close(); play.scrollIntoView({block:'center'}); };
-  $('fullscreen-layout').onclick = () => $('pad-edit').click();
-  $('edit-done').onclick = () => { editing = false; applyLayout(); openSettings('display'); };
+  $('fullscreen-layout').onclick = () => openSettings('controls');
+  $('edit-done').onclick = () => { editing = false; applyLayout(); openSettings('controls'); };
   $('pad-default').onclick = () => { layout = {overlay:true,scale:.75,opacity:.55,positions:{},landscapePositions:{}}; editing = false; release(); applyLayout(); storeLayout(); };
   for (const group of groups) {
     const el = groupElement(group);
     el.addEventListener('click', e => { if (editing) { e.preventDefault(); e.stopImmediatePropagation(); } },true);
     el.addEventListener('pointerdown', e => {
-      if (!editing || (group !== 'quick-actions' && !play.classList.contains('overlay'))) return;
+      if (!editing || (!group.startsWith('quick-') && !play.classList.contains('overlay'))) return;
       e.preventDefault(); e.stopPropagation(); release();
       const rect = play.getBoundingClientRect(), bounds = el.getBoundingClientRect();
       drag = {id:e.pointerId,group,dx:e.clientX-(bounds.left+bounds.width/2),dy:e.clientY-(bounds.top+bounds.height/2)};
@@ -383,7 +396,7 @@
   const readBrowserSave = key => localSaves.read(key);
   function browserSaveLabel(prefix,updated) { $('browser-save-status').textContent = prefix+'：'+new Date(updated).toLocaleTimeString('ja-JP'); }
   async function saveBrowser(force=false) {
-    if (!loaded || romLoading || !romKey || (!autoSave && !force)) return;
+    if (!loaded || romLoading || !romKey || communication?.busy || (communication?.blockSave && !force) || (!autoSave && !force)) return;
     const key = romKey, n = m._web_save_export();
     if (!n) { if (force) $('browser-save-status').textContent = 'このゲームのセーブデータはまだありません。'; return; }
     const pointer = m._web_save_data(), bytes = m.HEAPU8.slice(pointer,pointer+n).buffer, updated = Date.now(), filename = name;
@@ -442,24 +455,56 @@
     audioSources.add(source); source.onended = () => audioSources.delete(source);
     nextAudio = Math.max(nextAudio, audioContext.currentTime + .025); source.start(nextAudio); nextAudio += count/outputRate/speed;
   }
+  const disabledBeforeLink = new Map();
+  communication = createLinkSession({m,$,upload,store:localSaves,
+    getGame:() => ({loaded,bytes:romBytes,key:romKey,name,cheats:cheats.length>0}),
+    beforeStart:() => saveBrowser(true),
+    release, audio:playAudio,
+    refresh:() => { pixelHeap=null; if (image) drawFrame(); },
+    open:() => openSettings('link'), close:() => { if ($('settings').open) $('settings').close(); },
+    mode:(busy,running) => {
+      release(); editing=false; resumeAfterMenu=false;
+      if (busy) {
+        $('game-speed').value=1; $('game-speed').onchange();
+        if (!disabledBeforeLink.size) {
+          for(const id of ['pause','reset','import','open','welcome-open','cheat-add','quick-state-save','quick-state-load','speed-toggle','game-speed','browser-save-now','browser-save-delete','auto-save','pad-edit']) {
+            disabledBeforeLink.set(id,$(id).disabled); $(id).disabled=true;
+          }
+          for(const input of $('cheat-list').querySelectorAll('input,button')) input.disabled=true;
+        }
+      } else {
+        for(const [id,value] of disabledBeforeLink) $(id).disabled=value;
+        disabledBeforeLink.clear();
+      }
+      paused=true; clock=0; nextAudio=0;
+      $('pause').textContent='再開';
+      document.body.classList.toggle('link-mode',busy);
+      applyLayout(); updatePauseBanner();
+      if (running) enableAudio().catch(()=>{});
+    }
+  });
+  function drawFrame() {
+    const p=m._web_pixels();
+    if (pixelHeap !== m.HEAPU8.buffer || pixelBase !== p) {
+      pixelHeap=m.HEAPU8.buffer; pixelBase=p;
+      pixelRows=Array.from({length:canvas.height},(_,y)=>m.HEAPU8.subarray(p+y*256*4,p+y*256*4+canvas.width*4));
+    }
+    for(let y=0;y<canvas.height;y++) image.data.set(pixelRows[y],y*canvas.width*4);
+    for(let i=3;i<image.data.length;i+=4) image.data[i]=255;
+    ctx.putImageData(image,0,0); screenEffects.render(image);
+  }
   function tick(now) {
     controller.poll();
+    if (communication.busy) {
+      if (communication.tick(now,menuOpen || document.hidden ? 0 : keys)) drawFrame();
+      requestAnimationFrame(tick); return;
+    }
     if (loaded && !paused) {
       const step = 1000/(m._web_fps()*speed), limit = Math.ceil(4*speed); if (!clock) clock = now;
       let frames = 0;
       while (now >= clock && frames++ < limit) { m._web_frame(keys); playAudio(); clock += step; }
       if (now-clock > step*limit) clock = now;
-      if (frames) {
-        if (pixelHeap !== m.HEAPU8.buffer) {
-          pixelHeap = m.HEAPU8.buffer;
-          const p = m._web_pixels();
-          pixelRows = Array.from({length:canvas.height}, (_,y) => m.HEAPU8.subarray(p+y*256*4,p+y*256*4+canvas.width*4));
-        }
-        for (let y=0; y<canvas.height; ++y) image.data.set(pixelRows[y],y*canvas.width*4);
-        for (let i=3; i<image.data.length; i+=4) image.data[i] = 255;
-        ctx.putImageData(image,0,0);
-        screenEffects.render(image);
-      }
+      if (frames) drawFrame();
     }
     requestAnimationFrame(tick);
   }

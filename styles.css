@@ -768,6 +768,16 @@ textarea{
 #pause-banner span { font-size:14px; }
 #pause-banner[hidden], .clean-view #pause-banner { display:none!important; }
 
+.link-buttons { display:flex; gap:8px; }
+.link-buttons button { flex:1; min-height:44px; }
+#link-hud { position:absolute; top:52px; left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:5px; z-index:4; white-space:nowrap; max-width:calc(100% - 12px); background:#151925d9; border-radius:10px; padding:4px; }
+#link-hud span { font-size:11px; padding:4px; }
+#link-hud button { font-size:12px; padding:6px 9px; min-height:44px; }
+#link-hud button[aria-pressed="true"] { background:#73559e; }
+#link-hud[hidden], #link-view0[hidden], #link-view1[hidden], .clean-view #link-hud, .clean-view #link-open, .expanded #link-open { display:none!important; }
+#link-open { text-align:center; }
+body.link-mode #quick-actions, body.link-mode #pause-banner { display:none!important; }
+
 /* Quick actions share the portrait/landscape layout editor. */
 #quick-actions.custom-position { right:auto; transform:translate(-50%,-50%); }
 #quick-drag-handle { display:none; }
@@ -779,3 +789,15 @@ textarea{
 #fullscreen-layout { position:absolute; right:max(10px,env(safe-area-inset-right)); top:max(10px,env(safe-area-inset-top)); z-index:10; min-height:44px; padding:8px 12px; opacity:.65; font-size:12px; }
 #fullscreen-layout[hidden], .clean-view #fullscreen-layout { display:none!important; }
 .play #edit-bar { position:absolute; bottom:max(8px,env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%); z-index:10; width:max-content; max-width:calc(100% - 16px); padding:6px; border-radius:10px; background:#151925ed; }
+
+/* Each quick action has its own position in the shared control editor. */
+#quick-actions { display:contents; }
+.quick-action { position:absolute; top:52px; z-index:4; transform:translate(-50%,-50%); white-space:nowrap; pointer-events:auto; }
+#quick-action-speed { left:calc(50% - 110px); }
+#quick-action-save { left:50%; }
+#quick-action-load { left:calc(50% + 100px); }
+.play.immersive .quick-action { top:max(80px,calc(env(safe-area-inset-top) + 72px)); }
+.play.editing #quick-actions, .play.editing #quick-actions[hidden] { display:contents!important; }
+.play.editing .quick-action { outline:2px dashed #ffe38a; outline-offset:4px; border-radius:8px; touch-action:none; cursor:move; }
+.play.editing .quick-action button { pointer-events:none; }
+.quick-action.custom-position { transform:translate(-50%,-50%); }

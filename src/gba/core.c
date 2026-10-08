@@ -383,8 +383,14 @@ static void _GBACoreLoadConfig(struct mCore* core, const struct mCoreConfig* con
 	}
 
 	mCoreConfigGetBoolValue(config, "allowOpposingDirections", &gba->allowOpposingDirections);
+	{
+		int overclock = 0;
+		mCoreConfigGetIntValue(config, "overclock", &overclock);
+		GBASetOverclock(gba, overclock);
+	}
 
 	mCoreConfigCopyValue(&core->config, config, "allowOpposingDirections");
+	mCoreConfigCopyValue(&core->config, config, "overclock");
 	mCoreConfigCopyValue(&core->config, config, "gba.bios");
 	mCoreConfigCopyValue(&core->config, config, "gba.forceGbp");
 	mCoreConfigCopyValue(&core->config, config, "vbaBugCompat");
@@ -433,6 +439,15 @@ static void _GBACoreReloadConfigOption(struct mCore* core, const char* option, c
 		if (mCoreConfigGetIntValue(config, "frameskip", &core->opts.frameskip)) {
 			gba->video.frameskip = core->opts.frameskip;
 		}
+		return;
+	}
+	if (strcmp("overclock", option) == 0) {
+		int overclock = 0;
+		if (config != &core->config) {
+			mCoreConfigCopyValue(&core->config, config, "overclock");
+		}
+		mCoreConfigGetIntValue(config, "overclock", &overclock);
+		GBASetOverclock(gba, overclock);
 		return;
 	}
 	if (strcmp("allowOpposingDirections", option) == 0) {

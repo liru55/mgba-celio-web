@@ -312,6 +312,10 @@
     });
     for (const type of ['pointerup','pointercancel','lostpointercapture']) el.addEventListener(type,e => { if (drag && drag.id === e.pointerId) { drag = null; storeLayout(); } });
   }
+  // Non-passive fallback for iOS Safari; only block page panning inside the editor.
+  document.addEventListener('touchmove', e => {
+    if (editing && play.contains(e.target) && e.cancelable) e.preventDefault();
+  }, {passive:false,capture:true});
   const editBar=$('edit-bar'), editHandle=$('edit-handle');
   let editorPositions={}, editorDrag;
   try { editorPositions=JSON.parse(localStorage.getItem('mgba-editor-position'))||{}; } catch (_) {}

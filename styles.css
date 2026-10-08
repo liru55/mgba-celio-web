@@ -1288,3 +1288,12 @@ body:not(.ui-loaded) .memory-panel,.clean-view .memory-panel { display:none; }
 .play.editing .quick-action button { padding:9px 10px; font-size:12px; }
 @media(max-width:900px) { .play.editing .quick-action button { padding:8px; font-size:11px; } }
 @media(orientation:landscape) and (max-height:600px) { .play.editing .quick-action button { padding:7px; font-size:10px; } }
+
+/* Prevent Safari from taking an editing drag over as a page pan. */
+.play.editing,.play.editing .quick-action,.play.editing .quick-action button {
+  touch-action:none;
+  -webkit-user-select:none;
+  user-select:none;
+  -webkit-touch-callout:none;
+  overscroll-behavior:contain;
+}

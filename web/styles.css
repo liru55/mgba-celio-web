@@ -759,7 +759,7 @@ textarea{
 .play.immersive #quick-actions { top:max(62px,calc(env(safe-area-inset-top) + 52px)); }
 #quick-actions[hidden], #quick-message[hidden] { display:none!important; }
 #quick-message { position:absolute; bottom:10px; left:10px; right:10px; z-index:3; margin:0; padding:8px; border-radius:8px; background:#151925e8; text-align:center; font-size:12px; pointer-events:none; }
-.clean-view #quick-actions, .clean-view #quick-message, .play.editing #quick-actions { display:none!important; }
+.clean-view #quick-actions, .clean-view #quick-message { display:none!important; }
 
 #quick-actions { top:52px; right:auto; left:50%; transform:translateX(-50%); white-space:nowrap; }
 
@@ -767,3 +767,15 @@ textarea{
 #pause-banner strong { font-size:20px; }
 #pause-banner span { font-size:14px; }
 #pause-banner[hidden], .clean-view #pause-banner { display:none!important; }
+
+/* Quick actions share the portrait/landscape layout editor. */
+#quick-actions.custom-position { right:auto; transform:translate(-50%,-50%); }
+#quick-drag-handle { display:none; }
+.play.editing #quick-actions, .play.editing #quick-actions[hidden] { display:flex!important; flex-wrap:wrap; outline:2px dashed #ffe38a; outline-offset:3px; background:#151925e8; border-radius:10px; touch-action:none; cursor:move; }
+.play.editing #quick-drag-handle { display:block; flex-basis:100%; padding:6px; text-align:center; font-size:12px; color:#ffe38a; }
+.play.editing #quick-actions button { pointer-events:none; }
+.play.editing #pause-banner { display:none!important; }
+
+#fullscreen-layout { position:absolute; right:max(10px,env(safe-area-inset-right)); top:max(10px,env(safe-area-inset-top)); z-index:10; min-height:44px; padding:8px 12px; opacity:.65; font-size:12px; }
+#fullscreen-layout[hidden], .clean-view #fullscreen-layout { display:none!important; }
+.play #edit-bar { position:absolute; bottom:max(8px,env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%); z-index:10; width:max-content; max-width:calc(100% - 16px); padding:6px; border-radius:10px; background:#151925ed; }

@@ -1,0 +1,31 @@
+const {webkit,devices}=require('playwright');
+const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const root=path.resolve(__dirname,'../build-web');
+const server=http.createServer((req,res)=>{const f=path.join(root,new URL(req.url,'http://localhost').pathname.slice(1)||'index.html');fs.readFile(f,(e,b)=>{if(e){res.writeHead(404).end();return;}res.setHeader('Content-Type',f.endsWith('.wasm')?'application/wasm':f.endsWith('.js')?'text/javascript':f.endsWith('.css')?'text/css':'text/html');res.end(b);});});
+(async()=>{await new Promise(r=>server.listen(0,'127.0.0.1',r));const browser=await webkit.launch();try{
+const context=await browser.newContext({...devices['iPhone 13']});const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+await page.goto(process.env.PUBLIC_URL||`http://127.0.0.1:${server.address().port}/`);await page.waitForFunction(()=>!document.getElementById('open').disabled);
+const rom=Buffer.alloc(32768);rom.set([0xc3,0x50,0x01],0x100);rom.set([0xce,0xed,0x66,0x66],0x104);rom.set([0x18,0xfe],0x150);
+await page.locator('#rom').setInputFiles({name:'layout.gb',mimeType:'application/octet-stream',buffer:rom});await page.waitForFunction(()=>document.querySelector('.play.has-rom'));
+await page.locator('#fullscreen').click();await page.waitForFunction(()=>document.querySelector('.play.immersive'));
+assert.equal(await page.locator('#fullscreen-layout').isVisible(),true);
+async function drag(x,y){const b=await page.locator('#quick-drag-handle').boundingBox();assert.ok(b);await page.mouse.move(b.x+b.width/2,b.y+b.height/2);await page.mouse.down();await page.mouse.move(x,y,{steps:8});await page.mouse.up();}
+await page.locator('#fullscreen-layout').click();await page.waitForFunction(()=>document.querySelector('.play.editing'));
+assert.equal(await page.locator('#quick-actions').isVisible(),true);await drag(200,350);
+let saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('mgba-touch-layout')));assert.ok(saved.positions['quick-actions']);const portrait=saved.positions['quick-actions'];
+await page.locator('#edit-done').click();await page.locator('#settings-close').click();
+let box=await page.locator('#quick-actions').boundingBox();assert.ok(box.y>250&&box.y<400);assert.equal(await page.locator('#speed-toggle').textContent(),'倍速 OFF');assert.equal(await page.locator('#quick-state-load').isDisabled(),true);
+await page.setViewportSize({width:844,height:390});await page.locator('#fullscreen-layout').click();await drag(600,180);await page.locator('#edit-done').click();await page.locator('#settings-close').click();
+saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('mgba-touch-layout')));assert.deepEqual(saved.positions['quick-actions'],portrait);assert.ok(saved.landscapePositions['quick-actions']);
+box=await page.locator('#quick-actions').boundingBox();assert.ok(box.x>350&&box.y>90&&box.y+box.height<390);
+await page.locator('#speed-toggle').click();assert.equal(await page.locator('#speed-toggle').textContent(),'倍速 2×');await page.locator('#speed-toggle').click();
+await page.locator('#quick-state-save').click();await page.waitForFunction(()=>!document.getElementById('quick-state-load').disabled);await page.locator('#quick-state-load').click();
+await page.locator('#fullscreen-layout').click();await drag(1000,500);await page.locator('#edit-done').click();await page.locator('#settings-close').click();box=await page.locator('#quick-actions').boundingBox();assert.ok(box.x>=0&&box.y>=0&&box.x+box.width<=844&&box.y+box.height<=390);
+await page.setViewportSize({width:390,height:844});await page.waitForFunction(pos=>{const q=document.getElementById('quick-actions').getBoundingClientRect(),p=document.querySelector('.play').getBoundingClientRect();return !matchMedia('(orientation:landscape)').matches&&Math.abs((q.y+q.height/2-p.y)/p.height*100-pos.y)<.1;},portrait);
+box=await page.locator('#quick-actions').boundingBox();assert.ok(box.x>=0&&box.y>=0&&box.x+box.width<=390&&box.y+box.height<=844);
+await page.reload();await page.waitForFunction(()=>!document.getElementById('open').disabled);
+saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('mgba-touch-layout')));assert.deepEqual(saved.positions['quick-actions'],portrait);assert.ok(saved.landscapePositions['quick-actions']);
+await page.locator('#settings-open').click();await page.locator('#tab-display').click();await page.locator('#tab-controls').click();await page.locator('#show-quick').uncheck();await page.locator('#tab-display').click();await page.locator('#pad-edit').click();assert.equal(await page.locator('#quick-actions').isVisible(),true);await page.locator('#edit-done').click();await page.locator('#pad-default').click();saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('mgba-touch-layout')));assert.deepEqual(saved.positions,{});assert.deepEqual(saved.landscapePositions,{});await page.locator('#settings-close').click();assert.equal(await page.locator('#quick-actions').isVisible(),false);
+assert.deepEqual(errors,[]);console.log('Quick layout: fullscreen editing, portrait/landscape persistence, edge clamp, no accidental actions, save/load after drag, hidden/reset PASS');
+await context.close();
+}finally{await browser.close();server.close();}})().catch(e=>{console.error(e);server.close();process.exitCode=1});

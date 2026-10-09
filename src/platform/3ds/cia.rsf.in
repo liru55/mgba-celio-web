@@ -1,6 +1,6 @@
 BasicInfo:
-  Title                   : "${PROJECT_NAME}"
-  ProductCode             : "CTR-P-MGBA"
+  Title                   : "mGBA Celio"
+  ProductCode             : "CTR-P-CELI"
   Logo                    : Homebrew # Nintendo / Licensed / Distributed / iQue / iQueForSystem / Homebrew
 
 #RomFs:
@@ -9,7 +9,7 @@ BasicInfo:
 
 TitleInfo:
   Category                : Application
-  UniqueId                : 0xD721
+  UniqueId                : 0xD722
 
 Option:
   UseOnSD                 : true # true if App is to be installed to SD

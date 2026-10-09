@@ -11,7 +11,8 @@
 >   with a 4-digit room number. No Lua script or web page is needed.
 > - Windows build: a real GBA can join through a GBLink / Celio USB adapter (its CDC serial port), either linked
 >   directly with this emulator (no server) or entering a relay room in place of the emulated GBA. No web page is needed.
-> - Flash saves of up to 1MiB: a game that switches to flash banks 2-15 grows its 128KiB save to 1MiB.
+> - Flash saves of up to 6MiB: a game that switches to flash banks 2-95 grows its 128KiB save to 6MiB
+>   (saves of the earlier 1MiB version are kept and grown).
 >   Saves of other games stay at 128KiB. Real carts only have banks 0 and 1, so games should only do this on this build.
 > - CPU overclock: instruction cycles are counted at 1/N (config `overclock` or `MGBA_OVERCLOCK`: 1, 2, 4 or 8; **default 2**).
 >   DMA, video, audio, timers and serial keep their real timing, so games only lag less. Set `overclock=1` for real speed.

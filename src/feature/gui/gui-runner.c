@@ -23,6 +23,7 @@
 #include <psp2/io/stat.h>
 #elif defined(__3DS__)
 #include <mgba-util/platform/3ds/3ds-vfs.h>
+#include <mgba-util/platform/3ds/rom-buffer.h>
 #endif
 
 #include <sys/time.h>
@@ -412,6 +413,9 @@ void mGUIRun(struct mGUIRunner* runner, const char* path) {
 	runner->params.drawEnd();
 
 	bool found = false;
+#ifdef __3DS__
+	m3DSSetROMError("");
+#endif
 	mLOG(GUI_RUNNER, INFO, "Attempting to load %s", path);
 	runner->core = mCoreFind(path);
 	if (runner->core) {
@@ -447,7 +451,12 @@ void mGUIRun(struct mGUIRunner* runner, const char* path) {
 
 	if (!found) {
 		mLOG(GUI_RUNNER, WARN, "Failed to find core for %s!", path);
+#ifdef __3DS__
+		const char* error = m3DSROMError();
+		GUIShowMessageBox(&runner->params, GUI_MESSAGE_BOX_OK, 0, "%s", *error ? error : "Cannot open ROM. Check SD file.");
+#else
 		GUIShowMessageBox(&runner->params, GUI_MESSAGE_BOX_OK, 240, "Load failed!");
+#endif
 		return;
 	}
 	if (runner->core->platform(runner->core) == mPLATFORM_GBA) {

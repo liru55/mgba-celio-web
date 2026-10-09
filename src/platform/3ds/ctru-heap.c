@@ -12,7 +12,18 @@ uint32_t* romBuffer = NULL;
 size_t romBufferSize;
 
 // Keep GPU/audio storage separate while leaving room for 64MiB ROM + extra RAM.
-u32 __ctru_linear_heap_size = 16 * 1024 * 1024;
+u32 __ctru_linear_heap_size = 4 * 1024 * 1024;
+
+extern u32 __ctru_heap_size;
+static char romLoadError[160];
+
+const char* m3DSROMError(void) {
+	return romLoadError;
+}
+
+void m3DSSetROMError(const char* error) {
+	snprintf(romLoadError, sizeof(romLoadError), "%s", error);
+}
 
 FS_Archive sdmcArchive;
 
@@ -35,6 +46,7 @@ bool m3DSResizeROMBuffer(size_t size) {
 	romBufferSize = 0;
 	romBuffer = malloc(size);
 	if (!romBuffer) {
+		snprintf(romLoadError, sizeof(romLoadError), "ROM %uM / heap %uM. Use CIA.", (unsigned) (size >> 20), (unsigned) (__ctru_heap_size >> 20));
 		return false;
 	}
 	romBufferSize = size;

@@ -5,5 +5,7 @@
 CXX_GUARD_START
 // Call only after unloading the previous ROM. Failed allocations clear storage.
 bool m3DSResizeROMBuffer(size_t size);
+const char* m3DSROMError(void);
+void m3DSSetROMError(const char* error);
 CXX_GUARD_END
 #endif

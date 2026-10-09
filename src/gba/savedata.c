@@ -25,8 +25,10 @@
 // Some games may vary anywhere between about 2000 cycles to up to 30000 cycles. (Observed on a Macronix (09C2) chip).
 // Other games vary from very little, with a fairly solid 20500 cycle count. (Observed on a SST (D4BF) chip).
 // An average estimation is as follows.
-#define FLASH_ERASE_CYCLES 30000
-#define FLASH_PROGRAM_CYCLES 650
+// Short flash waits so the in-game save takes a few frames instead of ~1.3 s.
+// Games poll the chip until it is ready, so a shorter wait is safe; real hardware is unchanged.
+#define FLASH_ERASE_CYCLES 2000
+#define FLASH_PROGRAM_CYCLES 20
 // This needs real testing, and is only an estimation currently
 #define EEPROM_SETTLE_CYCLES 115000
 

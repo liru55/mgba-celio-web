@@ -34,6 +34,7 @@
   let volume = 1, muted = false;
   try { const sound = JSON.parse(localStorage.getItem('mgba-sound')); if (sound) { volume = Math.max(0,Math.min(1,Number(sound.volume) || 0)); muted = !!sound.muted; } } catch (_) {}
   let communication = null, romBytes = null, pixelBase = 0, skins=null,romLibrary=null,skinKeys=0,skinHoldSpeed=null;
+  let linkSpeedLocked = false;
   const memoryViewer=createMemoryViewer({m,$,available:()=>loaded&&!romLoading&&!communication?.busy});
   let romKey = '', romLoading = false, loadSerial = 0, autoSave = true;
   let autoBackup = true, backupBusy = false, backupEntries = [], nextBackupAt = 0;
@@ -47,7 +48,8 @@
   updateSpeedButton();
   $('game-speed').value = speed;
   $('game-speed').onchange = () => {
-    speed = Number($('game-speed').value); clock = 0; nextAudio = 0;
+    speed = linkSpeedLocked || communication?.busy ? 1 : Number($('game-speed').value);
+    $('game-speed').value = speed; clock = 0; nextAudio = 0;
     try { localStorage.setItem('mgba-speed',speed); } catch (_) {}
     for (const source of audioSources) { try { source.stop(); } catch (_) {} } audioSources.clear();
     if (speed !== 1) { fastSpeed = speed; try { localStorage.setItem('mgba-fast-speed',fastSpeed); } catch (_) {} }
@@ -678,6 +680,8 @@
     refresh:() => { pixelHeap=null; if (image) drawFrame(); },
     open:() => openSettings('link'), close:() => { for (const dialog of [$('settings'),$('link-dialog')]) if(dialog.open)dialog.close(); },
     mode:(busy,running) => {
+      linkSpeedLocked=busy;
+      if (busy) skinHoldSpeed=null;
       release(); editing=false; resumeAfterMenu=false;
       if (busy) {
         $('game-speed').value=1; $('game-speed').onchange();

@@ -535,10 +535,11 @@ void GBAVideoSoftwareRendererDrawBackgroundMode0(struct GBAVideoSoftwareRenderer
 	uint16_t* vram = renderer->d.vram;
 
 	if (background->yCache != inY >> 3) {
-		localX = 0;
-		for (tileX = 0; tileX < 64; ++tileX, localX += 8) {
-			BACKGROUND_TEXT_SELECT_CHARACTER;
-			background->mapCache[tileX] = mapData;
+		// Select the horizontal screen block once, then read contiguous rows.
+		unsigned secondBlock = (background->size & 1) << 10;
+		for (tileX = 0; tileX < 32; ++tileX) {
+			LOAD_16(background->mapCache[tileX], (yBase + tileX) << 1, vram);
+			LOAD_16(background->mapCache[tileX + 32], (yBase + secondBlock + tileX) << 1, vram);
 		}
 		background->yCache = inY >> 3;
 	}

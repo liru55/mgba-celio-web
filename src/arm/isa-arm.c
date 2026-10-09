@@ -168,20 +168,16 @@ static inline void _immediate(struct ARMCore* cpu, uint32_t opcode) {
 // Instruction definitions
 // Beware pre-processor antics
 
+// Pack NZCV into the flags byte once; arithmetic instructions also clear
+// its reserved low nibble, leaving the remaining CPSR bytes untouched.
 ATTRIBUTE_NOINLINE static void _additionS(struct ARMCore* cpu, int32_t m, int32_t n, int32_t d) {
-	cpu->cpsr.flags = 0;
-	cpu->cpsr.n = ARM_SIGN(d);
-	cpu->cpsr.z = !d;
-	cpu->cpsr.c = ARM_CARRY_FROM(m, n, d);
-	cpu->cpsr.v = ARM_V_ADDITION(m, n, d);
+	uint32_t overflow = (~((uint32_t) m ^ (uint32_t) n) & ((uint32_t) m ^ (uint32_t) d)) >> 31;
+	cpu->cpsr.flags = (((uint32_t) d >> 31) << 7) | ((!d) << 6) | (ARM_CARRY_FROM(m, n, d) << 5) | (overflow << 4);
 }
 
 ATTRIBUTE_NOINLINE static void _subtractionS(struct ARMCore* cpu, int32_t m, int32_t n, int32_t d) {
-	cpu->cpsr.flags = 0;
-	cpu->cpsr.n = ARM_SIGN(d);
-	cpu->cpsr.z = !d;
-	cpu->cpsr.c = ARM_BORROW_FROM(m, n, d);
-	cpu->cpsr.v = ARM_V_SUBTRACTION(m, n, d);
+	uint32_t overflow = (((uint32_t) m ^ (uint32_t) n) & ((uint32_t) m ^ (uint32_t) d)) >> 31;
+	cpu->cpsr.flags = (((uint32_t) d >> 31) << 7) | ((!d) << 6) | (ARM_BORROW_FROM(m, n, d) << 5) | (overflow << 4);
 }
 
 ATTRIBUTE_NOINLINE static void _neutralS(struct ARMCore* cpu, int32_t d) {

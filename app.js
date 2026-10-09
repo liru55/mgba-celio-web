@@ -36,6 +36,8 @@
   let communication = null, romBytes = null, pixelBase = 0, skins=null,romLibrary=null,skinKeys=0,skinHoldSpeed=null;
   const memoryViewer=createMemoryViewer({m,$,available:()=>loaded&&!romLoading&&!communication?.busy});
   let romKey = '', romLoading = false, loadSerial = 0, autoSave = true;
+  let autoBackup = true, backupBusy = false, backupEntries = [], nextBackupAt = 0;
+  try { autoBackup = localStorage.getItem('mgba-auto-backup') !== 'false'; } catch (_) {}
   try { autoSave = localStorage.getItem('mgba-auto-save') !== 'false'; } catch (_) {}
   let speed = 1;
   try { const saved = Number(localStorage.getItem('mgba-speed')); if ([1,1.5,2,3,4].includes(saved)) speed = saved; } catch (_) {}
@@ -81,7 +83,7 @@
   $('open').onclick = () => { enableAudio().catch(() => {}); $('rom').click(); };
   $('rom').onchange = () => loadROM($('rom').files[0]);
   async function loadROM(file) {
-    if (!file || romLoading || quickBusy || communication?.busy) return;
+    if (!file || romLoading || quickBusy || backupBusy || communication?.busy) return;
     const pendingSave=saveBrowser();romLoading=true;await pendingSave;
     if ($('settings').open) $('settings').close();
     paused = true; release(); romLoading = true; quickState = null; $('quick-state-save').disabled = $('quick-state-load').disabled = true; const serial = ++loadSerial;
@@ -117,6 +119,8 @@
       paused = false; $('pause').textContent = '一時停止'; status.textContent = name;
     } catch (e) { status.textContent = e.message; }
     romLoading = false; updatePauseBanner();showQuickSlot();
+    nextBackupAt = Date.now() + 300000;
+    await refreshBackups();
     for (const id of ['pause','reset','export','import']) $(id).disabled = !loaded;
     $('import-main').disabled = !loaded; $('screenshot-save').disabled = !loaded; $('quick-save').disabled = !loaded; $('cheat-add').disabled = !loaded;
     $('quick-state-save').disabled = !loaded; $('quick-state-load').disabled = !loaded || !quickState;
@@ -540,6 +544,91 @@
   };
   setInterval(() => { if (!paused && !document.hidden) saveBrowser().catch(()=>{}); },10000);
   addEventListener('pagehide', () => saveBrowser().catch(()=>{}));
+  function updateBackupControls(linkBusy=communication?.busy) {
+    const blocked = !loaded || romLoading || backupBusy || linkBusy;
+    $('backup-now').disabled = blocked;
+    $('backup-generation').disabled = blocked || !backupEntries.length;
+    $('backup-restore').disabled = $('backup-export').disabled = blocked || !$('backup-generation').value;
+    $('auto-backup').disabled = backupBusy || !!linkBusy;
+  }
+  async function refreshBackups() {
+    const key = romKey, select = $('backup-generation'), selected = select.value;
+    try {
+      const entries = key ? await localSaves.backups(key) : [];
+      if (key !== romKey) return;
+      backupEntries = entries;
+      select.replaceChildren();
+      if (!entries.length) select.add(new Option('バックアップはまだありません',''));
+      for (const entry of entries) select.add(new Option(new Date(entry.updated).toLocaleString('ja-JP')+' · '+Math.round(entry.size/1024)+' KiB',String(entry.id)));
+      if (entries.some(entry=>String(entry.id)===selected)) select.value=selected;
+      $('backup-status').textContent = entries.length ? entries.length+'/10世代 · 最新：'+new Date(entries[0].updated).toLocaleString('ja-JP') : loaded ? (autoBackup ? '5分ごとにバックアップします。' : '自動バックアップはオフです。') : 'ROMを開いてから利用できます。';
+    } catch (_) {
+      backupEntries=[];select.replaceChildren(new Option('バックアップを開けません',''));
+      $('backup-status').textContent='バックアップを読み込めませんでした。';
+    }
+    updateBackupControls();
+  }
+  async function recordBackup() {
+    const key=romKey,n=m._web_save_export();
+    if (!n) return false;
+    const pointer=m._web_save_data();
+    await localSaves.backup(key,{bytes:m.HEAPU8.slice(pointer,pointer+n).buffer,updated:Date.now(),filename:name});
+    nextBackupAt=Date.now()+300000;
+    return true;
+  }
+  async function makeBackup() {
+    if (!loaded || romLoading || backupBusy || communication?.busy || communication?.blockSave) return;
+    backupBusy=true;updateBackupControls();
+    try {
+      if (await recordBackup()) await refreshBackups();
+      else $('backup-status').textContent='このゲームのセーブデータはまだありません。';
+    } catch (_) { $('backup-status').textContent='バックアップできませんでした。ファイルに書き出してください。'; }
+    finally { backupBusy=false;nextBackupAt=Date.now()+300000;updateBackupControls(); }
+  }
+  async function selectedBackup() {
+    const key=romKey,serial=loadSerial,id=Number($('backup-generation').value);
+    if (!id || !loaded || romLoading || communication?.busy) throw new Error('通信を終了して、ROMと世代を選んでください。');
+    const stored=await localSaves.readBackup(key,id);
+    if (!stored || key!==romKey || serial!==loadSerial || romLoading || communication?.busy) throw new Error('バックアップを読み込めませんでした。');
+    return stored;
+  }
+  $('auto-backup').checked=autoBackup;
+  $('auto-backup').onchange=()=>{
+    autoBackup=$('auto-backup').checked;nextBackupAt=Date.now()+300000;
+    try { localStorage.setItem('mgba-auto-backup',String(autoBackup)); } catch (_) {}
+    refreshBackups();
+  };
+  $('backup-now').onclick=makeBackup;
+  $('backup-generation').onchange=()=>updateBackupControls();
+  $('backup-restore').onclick=async()=>{
+    if (backupBusy) return;
+    backupBusy=true;updateBackupControls();
+    try {
+      const stored=await selectedBackup();
+      await recordBackup(); // Preserve the current save before replacing it.
+      if (communication?.busy || romLoading) throw new Error('通信中は復元できません。');
+      if (!upload(new Uint8Array(stored.bytes),(p,n)=>m._web_save_import(p,n))) throw new Error('セーブを復元できませんでした。');
+      m._web_reset();release();pixelHeap=null;drawFrame();
+      $('save-name').textContent='バックアップから復元';
+      await saveBrowser(true,true);await refreshBackups();
+      $('backup-status').textContent=new Date(stored.updated).toLocaleString('ja-JP')+' の世代を復元しました。';
+    } catch (error) { $('backup-status').textContent=error.message; }
+    finally { backupBusy=false;updateBackupControls(); }
+  };
+  $('backup-export').onclick=async()=>{
+    try {
+      const stored=await selectedBackup(),a=document.createElement('a');
+      const url=URL.createObjectURL(new Blob([stored.bytes],{type:'application/octet-stream'}));
+      a.href=url;a.download=stored.filename.replace(/\.[^.]+$/,'')+'-backup-'+stored.updated+'.sav';a.click();
+      setTimeout(()=>URL.revokeObjectURL(url),60000);
+    } catch (error) { $('backup-status').textContent=error.message; }
+  };
+  function backupIfDue() {
+    if (autoBackup && nextBackupAt && Date.now()>=nextBackupAt && !document.hidden) makeBackup();
+  }
+  setInterval(backupIfDue,30000);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)backupIfDue();});
+  updateBackupControls();
   function updateSound() {
     $('volume').value = $('volume-main').value = volume;
     $('volume-value').value = $('volume-main-value').value = Math.round(volume*100)+'%'; $('mute').checked = muted;
@@ -606,6 +695,7 @@
       $('pause').textContent=paused?'再開':'一時停止';
       document.body.classList.toggle('link-mode',busy);
       applyLayout(); updatePauseBanner();
+      updateBackupControls(busy);
       if (running) enableAudio().catch(()=>{});
     }
   });

@@ -78,12 +78,17 @@ size_t mAudioResamplerProcess(struct mAudioResampler* resampler) {
 
 	size_t read = 0;
 	mASSERT(resampler->source->channels <= MAX_CHANNELS);
+	// Sampling only reads the source; writes consume one destination frame.
+	// Preserve dynamic bounds when source and destination alias.
+	bool aliased = resampler->source == resampler->destination;
+	size_t sourceAvailable = mAudioBufferAvailable(resampler->source);
+	size_t destinationFree = mAudioBufferCapacity(resampler->destination) - mAudioBufferAvailable(resampler->destination);
 
 	while (true) {
-		if (timestamp + resampler->highWaterMark >= mAudioBufferAvailable(resampler->source)) {
+		if (timestamp + resampler->highWaterMark >= (aliased ? mAudioBufferAvailable(resampler->source) : sourceAvailable)) {
 			break;
 		}
-		if (mAudioBufferAvailable(resampler->destination) == mAudioBufferCapacity(resampler->destination)) {
+		if (aliased ? mAudioBufferAvailable(resampler->destination) == mAudioBufferCapacity(resampler->destination) : read >= destinationFree) {
 			break;
 		}
 

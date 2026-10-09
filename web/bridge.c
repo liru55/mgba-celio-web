@@ -77,6 +77,16 @@ EMSCRIPTEN_KEEPALIVE int web_load(const void* data, size_t size) {
 EMSCRIPTEN_KEEPALIVE unsigned web_width(void) { return width; }
 EMSCRIPTEN_KEEPALIVE unsigned web_height(void) { return height; }
 EMSCRIPTEN_KEEPALIVE void* web_pixels(void) { return pixels; }
+/* Pack the renderer's padded RGB rows for Canvas without changing core pixels. */
+EMSCRIPTEN_KEEPALIVE void* web_rgba_pixels(void) {
+  static uint32_t rgba[256 * 224];
+  for (unsigned y = 0; y < height; ++y) {
+    for (unsigned x = 0; x < width; ++x) {
+      rgba[y * width + x] = pixels[y * 256 + x] | 0xFF000000u;
+    }
+  }
+  return rgba;
+}
 EMSCRIPTEN_KEEPALIVE void web_frame(unsigned keys) {
   if (!core) return;
   core->setKeys(core, keys);

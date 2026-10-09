@@ -30,7 +30,20 @@ void mAudioBufferClear(struct mAudioBuffer* buffer) {
 
 int16_t mAudioBufferPeek(const struct mAudioBuffer* buffer, unsigned channel, size_t offset) {
 	int16_t sample;
-	if (!mCircleBufferDump(&buffer->data, &sample, sizeof(int16_t), (offset * buffer->channels + channel) * sizeof(int16_t))) {
+	size_t byteOffset = (offset * buffer->channels + channel) * sizeof(int16_t);
+	// Audio frames are complete int16 samples. Avoid the generic dump path
+	// for contiguous samples, while retaining its handling at a byte boundary.
+	if (!((uintptr_t) buffer->data.readPtr & 1) && !(buffer->data.capacity & 1) && buffer->data.size >= sizeof(sample) && byteOffset <= buffer->data.size - sizeof(sample)) {
+		size_t position = (const uint8_t*) buffer->data.readPtr - (const uint8_t*) buffer->data.data + byteOffset;
+		if (position >= buffer->data.capacity) {
+			position -= buffer->data.capacity;
+		}
+		if (position <= buffer->data.capacity - sizeof(sample)) {
+			memcpy(&sample, (const uint8_t*) buffer->data.data + position, sizeof(sample));
+			return sample;
+		}
+	}
+	if (!mCircleBufferDump(&buffer->data, &sample, sizeof(int16_t), byteOffset)) {
 		return 0;
 	}
 	return sample;

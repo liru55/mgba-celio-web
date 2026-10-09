@@ -46,7 +46,7 @@ bool m3DSResizeROMBuffer(size_t size) {
 	romBufferSize = 0;
 	romBuffer = malloc(size);
 	if (!romBuffer) {
-		snprintf(romLoadError, sizeof(romLoadError), "ROM %uM / heap %uM. Use CIA.", (unsigned) (size >> 20), (unsigned) (__ctru_heap_size >> 20));
+		snprintf(romLoadError, sizeof(romLoadError), "No RAM: ROM %uM / heap %uM.", (unsigned) (size >> 20), (unsigned) (__ctru_heap_size >> 20));
 		return false;
 	}
 	romBufferSize = size;

@@ -146,7 +146,7 @@
   $('save').onchange = async () => {
     const file = $('save').files[0]; if (!file || !loaded) return;
     try {
-      if (file.size > 1024 * 1024) throw new Error('セーブファイルが大きすぎます');
+      if (file.size > 6 * 1024 * 1024 + 16) throw new Error('セーブファイルが大きすぎます');
       if (!upload(new Uint8Array(await file.arrayBuffer()), (p,n) => m._web_save_import(p,n))) throw new Error('セーブを読み込めませんでした');
       m._web_reset(); release(); status.textContent = 'セーブを読み込みました'; $('save-name').textContent = file.name; saveBrowser(true).catch(()=>{});
     } catch (e) { status.textContent = e.message; }

@@ -415,11 +415,12 @@
     if (!document.body.classList.contains('clean-view')) return;
     e.preventDefault(); e.stopImmediatePropagation();
     document.body.classList.remove('clean-view'); release();
+    if (loaded && paused && !menuOpen && !editing && !romLoading && !communication?.busy) togglePause();
   },true);
   $('pause-banner').onclick = () => { if (loaded && paused && !menuOpen && !editing) togglePause(); };
   play.addEventListener('pointerdown', e => {
-    if (!loaded || !paused || menuOpen || editing || romLoading) return;
-    if (e.target === canvas || e.target === play || e.target.id === 'effect-screen') {
+    if (!loaded || !paused || menuOpen || editing || romLoading || communication?.busy) return;
+    if (e.target.closest('.screen-viewport,.gamepad,.delta-controls') || e.target === play || e.target.classList.contains('skin-stage')) {
       e.preventDefault(); e.stopImmediatePropagation(); togglePause();
     }
   },true);

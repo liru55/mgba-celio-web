@@ -16,7 +16,9 @@
   try { m = await createMGBA({print: () => {}}); } catch (e) { status.textContent = `読み込み失敗: ${e.message}`; return; }
   const canvas = $('screen'), ctx = canvas.getContext('2d');
   const screenEffects = createScreenEffects(canvas);
-  let loaded = false, paused = false, keys = 0, image, pixelRows = [], pixelHeap, cheats = [], name = 'game', clock = 0, nextAudio = 0, audioContext, audioGain;
+  let packedPixels = false;
+  let pixelLength = 0;
+  let loaded = false, paused = false, keys = 0, image, pixelData = [], pixelHeap, cheats = [], name = 'game', clock = 0, nextAudio = 0, audioContext, audioGain;
   const audioSources = new Set();
   const vibrationSupported=typeof navigator.vibrate==='function';
   let vibrationEnabled=true,lastVibration=-Infinity;
@@ -98,6 +100,7 @@
       canvas.style.aspectRatio = `${canvas.width}/${canvas.height}`;
       document.querySelector('.play').style.setProperty('--game-aspect',canvas.width/canvas.height);
       image = ctx.createImageData(canvas.width, canvas.height); pixelHeap = null;
+      choosePixelTransfer();
       cheats = []; renderCheats(); configureCheatFormats();
             {
         try {
@@ -567,12 +570,12 @@
     if (nextAudio > audioContext.currentTime + .2) return;
     const outputRate = audioContext.sampleRate, count = Math.max(1, Math.round(n * outputRate / rate));
     const buffer = audioContext.createBuffer(2, count, outputRate);
-    for (let c = 0; c < 2; ++c) {
-      const channel = buffer.getChannelData(c);
-      for (let i = 0; i < count; ++i) {
-        const position = i * rate / outputRate, j = Math.min(n-1, Math.floor(position)), t = position-j;
-        channel[i] = ((1-t)*m.HEAP16[p+j*2+c] + t*m.HEAP16[p+Math.min(j+1,n-1)*2+c]) / 32768;
-      }
+    const left=buffer.getChannelData(0), right=buffer.getChannelData(1), samples=m.HEAP16;
+    for (let i = 0; i < count; ++i) {
+      const position=i*rate/outputRate, j=Math.min(n-1,Math.floor(position)), t=position-j;
+      const first=p+j*2, second=p+Math.min(j+1,n-1)*2;
+      left[i]=((1-t)*samples[first]+t*samples[second])/32768;
+      right[i]=((1-t)*samples[first+1]+t*samples[second+1])/32768;
     }
     const source = audioContext.createBufferSource(); source.buffer = buffer; source.playbackRate.value = speed; source.connect(audioGain);
     audioSources.add(source); source.onended = () => audioSources.delete(source);
@@ -620,14 +623,42 @@
       if(type==='releaseSpeed'&&skinHoldSpeed!==null){const original=skinHoldSpeed;skinHoldSpeed=null;$('game-speed').value=original;$('game-speed').onchange();}
     }
   });
-  function drawFrame() {
-    const p=m._web_pixels();
-    if (pixelHeap !== m.HEAPU8.buffer || pixelBase !== p) {
-      pixelHeap=m.HEAPU8.buffer; pixelBase=p;
-      pixelRows=Array.from({length:canvas.height},(_,y)=>m.HEAPU8.subarray(p+y*256*4,p+y*256*4+canvas.width*4));
+  function choosePixelTransfer() {
+    packedPixels=false;
+    if (typeof m._web_rgba_pixels !== 'function') return;
+    // Scalar WASM copies are faster on some engines, slower on others.
+    // Compare the same cached-view paths, without advancing emulation.
+    const base=m._web_pixels(), width=canvas.width, height=canvas.height;
+    const rows=Array.from({length:height},(_,y)=>m.HEAPU8.subarray(base+y*1024,base+y*1024+width*4));
+    const packed=m.HEAPU8.subarray(m._web_rgba_pixels(),m._web_rgba_pixels()+image.data.length);
+    const copyRows=()=>{
+      m._web_pixels();
+      for(let y=0;y<height;y++) image.data.set(rows[y],y*width*4);
+      for(let i=3;i<image.data.length;i+=4) image.data[i]=255;
+    };
+    const copyPacked=()=>{m._web_rgba_pixels();image.data.set(packed);};
+    for(let i=0;i<16;i++){copyRows();copyPacked();}
+    let rowTime=Infinity, packedTime=Infinity;
+    for(let round=0;round<3;round++) {
+      let start=performance.now();for(let i=0;i<128;i++)copyRows();rowTime=Math.min(rowTime,performance.now()-start);
+      start=performance.now();for(let i=0;i<128;i++)copyPacked();packedTime=Math.min(packedTime,performance.now()-start);
     }
-    for(let y=0;y<canvas.height;y++) image.data.set(pixelRows[y],y*canvas.width*4);
-    for(let i=3;i<image.data.length;i+=4) image.data[i]=255;
+    packedPixels=packedTime<rowTime*.9;
+    pixelHeap=null;
+  }
+  function drawFrame() {
+    const p=packedPixels ? m._web_rgba_pixels() : m._web_pixels();
+    if (pixelHeap !== m.HEAPU8.buffer || pixelBase !== p || pixelLength !== image.data.length) {
+      pixelHeap=m.HEAPU8.buffer; pixelBase=p;
+      pixelLength=image.data.length;
+      pixelData=packedPixels ? m.HEAPU8.subarray(p,p+pixelLength) : Array.from({length:canvas.height},(_,y)=>m.HEAPU8.subarray(p+y*256*4,p+y*256*4+canvas.width*4));
+    }
+    if (packedPixels) image.data.set(pixelData);
+    else {
+      // Keep older offline cores usable during a cache update.
+      for(let y=0;y<canvas.height;y++) image.data.set(pixelData[y],y*canvas.width*4);
+      for(let i=3;i<image.data.length;i+=4) image.data[i]=255;
+    }
     ctx.putImageData(image,0,0); screenEffects.render(image);
   }
   function tick(now) {

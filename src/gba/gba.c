@@ -60,6 +60,10 @@ static bool _setSoftwareBreakpoint(struct ARMDebugger*, uint32_t address, enum E
 static void _clearSoftwareBreakpoint(struct ARMDebugger*, const struct ARMDebugBreakpoint*);
 #endif
 
+#if defined(__3DS__) && defined(FIXED_ROM_BUFFER)
+#include <mgba-util/platform/3ds/rom-buffer.h>
+#endif
+
 #ifdef FIXED_ROM_BUFFER
 extern uint32_t* romBuffer;
 extern size_t romBufferSize;
@@ -402,6 +406,11 @@ bool GBALoadNull(struct GBA* gba) {
 #ifndef FIXED_ROM_BUFFER
 	gba->memory.rom = anonymousMemoryMap(GBA_SIZE_ROM0);
 #else
+#ifdef __3DS__
+	if (!m3DSResizeROMBuffer(GBA_SIZE_ROM0)) {
+		return false;
+	}
+#endif
 	gba->memory.rom = romBuffer;
 #endif
 	gba->isPristine = false;
@@ -449,6 +458,67 @@ bool GBALoadROM(struct GBA* gba, struct VFile* vf) {
 	gba->isPristine = true;
 	gba->pristineRomSize = vf->size(vf);
 	vf->seek(vf, 0, SEEK_SET);
+#if defined(__3DS__) && defined(FIXED_ROM_BUFFER)
+	// The 3DS fixed buffer owns the ROM. Mapping a second copy both wastes
+	// heap and leaks it, because FIXED_ROM_BUFFER skips unmapping on unload.
+	char ident = 0;
+	if (gba->pristineRomSize > GBA_SIZE_ROM0) {
+		vf->seek(vf, 0xAC, SEEK_SET);
+		vf->read(vf, &ident, 1);
+	}
+	if (!gba->pristineRomSize || (gba->pristineRomSize > GBA_SIZE_ROM0 && ident != 'M' && gba->pristineRomSize != GBA_SIZE_ROM0 * 2)) {
+		gba->romVf = NULL;
+		mLOG(GBA, WARN, "3DS supports ROMs up to 64MiB");
+		return false;
+	}
+	size_t readSize = gba->pristineRomSize;
+	size_t capacity;
+	if (ident == 'M') {
+		gba->memory.romSize = 0x01000000;
+		capacity = GBA_SIZE_ROM0;
+		readSize = gba->memory.romSize;
+		gba->pristineRomSize = GBA_SIZE_ROM0;
+	} else if (gba->pristineRomSize == 0x00100000) {
+		gba->memory.romSize = 0x00400000;
+		capacity = gba->memory.romSize;
+	} else {
+		gba->memory.romSize = popcount32(gba->pristineRomSize) == 1 ? gba->pristineRomSize : GBA_SIZE_ROM0;
+		capacity = gba->memory.romSize;
+	}
+	if (!m3DSResizeROMBuffer(capacity)) {
+		gba->romVf = NULL;
+		gba->memory.romSize = 0;
+		mLOG(GBA, WARN, "Not enough 3DS memory for ROM; 64MiB ROMs require New 3DS");
+		return false;
+	}
+	gba->memory.rom = romBuffer;
+	gba->isPristine = false;
+	if (capacity > readSize) {
+		memset((uint8_t*) romBuffer + readSize, 0, capacity - readSize);
+	}
+	vf->seek(vf, 0, SEEK_SET);
+	size_t offset = 0;
+	while (offset < readSize) {
+		size_t chunk = readSize - offset;
+		if (chunk > 0x40000) {
+			chunk = 0x40000;
+		}
+		ssize_t count = vf->read(vf, (uint8_t*) romBuffer + offset, chunk);
+		if (count <= 0 || (size_t) count > chunk) {
+			gba->memory.rom = NULL;
+			gba->memory.romSize = 0;
+			gba->romVf = NULL;
+			mLOG(GBA, WARN, "Couldn't read complete ROM from SD card");
+			return false;
+		}
+		offset += count;
+	}
+	if (gba->pristineRomSize == 0x00100000) {
+		memcpy((uint8_t*) romBuffer + 0x100000, romBuffer, 0x100000);
+		memcpy((uint8_t*) romBuffer + 0x200000, romBuffer, 0x100000);
+		memcpy((uint8_t*) romBuffer + 0x300000, romBuffer, 0x100000);
+	}
+#else
 	if (gba->pristineRomSize > GBA_SIZE_ROM0) {
 		char ident;
 		vf->seek(vf, 0xAC, SEEK_SET);
@@ -489,6 +559,7 @@ bool GBALoadROM(struct GBA* gba, struct VFile* vf) {
 		gba->memory.rom = vf->map(vf, gba->pristineRomSize, MAP_READ);
 		gba->memory.romSize = gba->pristineRomSize;
 	}
+#endif
 	if (!gba->memory.rom) {
 		gba->romVf = NULL;
 		mLOG(GBA, WARN, "Couldn't map ROM");

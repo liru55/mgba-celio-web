@@ -166,10 +166,23 @@ bool mCorePreloadFile(struct mCore* core, const char* path) {
 }
 
 bool mCorePreloadVFCB(struct mCore* core, struct VFile* vf, void (cb)(size_t, size_t, void*), void* context) {
+#ifdef __3DS__
+	// GBA owns a resizable fixed buffer; preloading into it aliases the input.
+	if (core->platform(core) == mPLATFORM_GBA) {
+		if (!vf) {
+			return false;
+		}
+		bool loaded = core->loadROM(core, vf);
+		if (loaded && cb) {
+			cb(vf->size(vf), vf->size(vf), context);
+		}
+		return loaded;
+	}
+#endif
 	struct VFile* vfm;
 	size_t size = vf->size(vf);
 
-#ifdef FIXED_ROM_BUFFER
+#if defined(FIXED_ROM_BUFFER) && !defined(__3DS__)
 	extern uint32_t* romBuffer;
 	extern size_t romBufferSize;
 	if (size > romBufferSize) {
@@ -187,7 +200,7 @@ bool mCorePreloadVFCB(struct mCore* core, struct VFile* vf, void (cb)(size_t, si
 #endif
 
 	size_t chunkSize;
-#ifdef FIXED_ROM_BUFFER
+#if defined(FIXED_ROM_BUFFER) && !defined(__3DS__)
 	uint8_t* buffer = (uint8_t*) romBuffer;
 	chunkSize = 0x10000;
 #else
@@ -198,7 +211,7 @@ bool mCorePreloadVFCB(struct mCore* core, struct VFile* vf, void (cb)(size_t, si
 	size_t total = 0;
 	vf->seek(vf, 0, SEEK_SET);
 	while ((read = vf->read(vf, buffer, chunkSize)) > 0) {
-#ifdef FIXED_ROM_BUFFER
+#if defined(FIXED_ROM_BUFFER) && !defined(__3DS__)
 		buffer += read;
 #else
 		vfm->write(vfm, buffer, read);

@@ -429,7 +429,7 @@ void mGUIRun(struct mGUIRunner* runner, const char* path) {
 			runner->setFrameLimiter(runner, true);
 		}
 
-#ifdef FIXED_ROM_BUFFER
+#if defined(FIXED_ROM_BUFFER) && !defined(__3DS__)
 		extern size_t romBufferSize;
 		if (!found && rom && (size_t) rom->size(rom) > romBufferSize) {
 			found = runner->core->loadROM(runner->core, rom);

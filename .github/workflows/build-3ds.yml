@@ -20,9 +20,10 @@ jobs:
           cmake -S /tmp/bannertool -B /tmp/bannertool-build -DCMAKE_BUILD_TYPE=Release
           cmake --build /tmp/bannertool-build --parallel 2
           cmake --install /tmp/bannertool-build
-          curl -fL https://github.com/3DSGuy/Project_CTR/releases/download/makerom-v0.19.0/makerom-v0.19.0-ubuntu_x86_64.zip -o /tmp/makerom.zip
-          unzip /tmp/makerom.zip -d /tmp/makerom
-          install -m 755 /tmp/makerom/makerom /usr/local/bin/makerom
+          git clone --branch makerom-v0.19.0 --depth 1 https://github.com/3DSGuy/Project_CTR.git /tmp/project-ctr
+          make -C /tmp/project-ctr/makerom deps -j2
+          make -C /tmp/project-ctr/makerom -j2
+          install -m 755 /tmp/project-ctr/makerom/bin/makerom /usr/local/bin/makerom
       - name: Configure
         run: cmake -S . -B build-3ds -DCMAKE_TOOLCHAIN_FILE=src/platform/3ds/CMakeToolchain.txt -DCMAKE_BUILD_TYPE=Release -DBUILD_QT=OFF -DBUILD_SDL=OFF -DUSE_LTO=OFF
       - name: Build

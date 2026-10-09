@@ -86,11 +86,14 @@ struct GBASavedata {
 
 	enum FlashStateMachine flashState;
 
-	// 1MB flash extension: banks 2..15 exist only after the game switches to them
+	// Flash extension: banks 2 and up exist only after the game switches to them
 	bool flashExt;
 };
 
-#define GBA_SIZE_FLASH_EXT 0x00100000
+#define GBA_SIZE_FLASH_EXT 0x00600000
+#define GBA_FLASH_EXT_BANKS (GBA_SIZE_FLASH_EXT >> 16)
+// Size of saves written by the earlier 1MiB extension (16 banks)
+#define GBA_SIZE_FLASH_EXT_1M 0x00100000
 
 struct GBASavedataRTCBuffer {
 	uint8_t time[7];
